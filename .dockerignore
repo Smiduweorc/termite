@@ -1,0 +1,29 @@
+# The build context is the template root, and the runtime stage copies backend/ wholesale.
+# Anything not listed here ends up baked into the image.
+
+# Installed inside the image, for the image's platform. A host node_modules - carrying
+# native binaries built for the wrong libc - must never be copied over that.
+node_modules/
+
+# Stale local build output. The container runs from src/.
+dist/
+*.tsbuildinfo
+
+# Secrets. .env.example is documentation and stays.
+.env
+.env.*
+!.env.example
+
+.git/
+.github/
+.vscode/
+coverage/
+*.log
+
+# Tests and tooling config: none of it runs in production.
+**/*.test.ts
+README.md
+biome.jsonc
+commitlint.config.js
+lefthook.yml
+docker-compose.yml

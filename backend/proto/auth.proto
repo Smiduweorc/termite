@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package bevd.auth.v1;
+
+// gRPC has no cookies, so tokens are returned in the response body and the caller sends
+// the access token back as `authorization: Bearer <jwt>` metadata on later calls.
+//
+// The browser never does this - it uses tRPC, where the same tokens go into httpOnly
+// cookies that JavaScript cannot read. Same service underneath, different envelope.
+service AuthService {
+	rpc Register(RegisterRequest) returns (Session);
+	rpc Login(LoginRequest) returns (Session);
+	rpc Refresh(RefreshRequest) returns (Session);
+	rpc Logout(LogoutRequest) returns (LogoutResponse);
+	// Requires metadata. Returns who the token says you are.
+	rpc Me(MeRequest) returns (User);
+}
+
+message User {
+	string id = 1;
+	string email = 2;
+	string name = 3;
+	// "user" or "admin".
+	string role = 4;
+	string created_at = 5;
+	string updated_at = 6;
+}
+
+message Session {
+	User user = 1;
+	// Short-lived. Send it as bearer metadata.
+	string access_token = 2;
+	// Long-lived and opaque. Store it somewhere safe; it is what Refresh consumes.
+	string refresh_token = 3;
+}
+
+message RegisterRequest {
+	string email = 1;
+	string name = 2;
+	string password = 3;
+}
+
+message LoginRequest {
+	string email = 1;
+	string password = 2;
+}
+
+message RefreshRequest {
+	// Rotated on every call: the one you send is dead afterwards, and you get a new one.
+	string refresh_token = 1;
+}
+
+message LogoutRequest {
+	string refresh_token = 1;
+}
+
+message LogoutResponse {
+	bool ok = 1;
+}
+
+message MeRequest {}

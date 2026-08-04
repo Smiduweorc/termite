@@ -1,0 +1,16 @@
+{
+	"extends": "@vue/tsconfig/tsconfig.dom.json",
+	"compilerOptions": {
+		// "node" is here for two reasons: vite.config.ts runs in Node, and importing
+		// the backend's AppRouter pulls its source into this program, where `process`
+		// is referenced. Both are build-time only - no backend code reaches the bundle.
+		"types": ["vite/client", "node"],
+
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"noFallthroughCasesInSwitch": true,
+
+		"noEmit": true
+	},
+	"include": ["src/**/*.ts", "src/**/*.vue", "vite.config.ts", "vitest.config.ts"]
+}

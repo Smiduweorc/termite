@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package bevd.post.v1;
+
+// Reads are open to anonymous callers; writes need an access token in the request
+// metadata: `authorization: Bearer <jwt>`. See src/grpc/auth.ts.
+service PostService {
+	rpc ListPosts(ListPostsRequest) returns (ListPostsResponse);
+	rpc GetPost(GetPostRequest) returns (Post);
+	rpc CreatePost(CreatePostRequest) returns (Post);
+	rpc UpdatePost(UpdatePostRequest) returns (Post);
+	rpc DeletePost(DeletePostRequest) returns (DeletePostResponse);
+}
+
+message Post {
+	string id = 1;
+	string title = 2;
+	string body = 3;
+	bool published = 4;
+	// Whoever created it. Only they, or an admin, may change it.
+	string author_id = 5;
+	// RFC 3339. Timestamps cross the wire as strings to keep the example free of
+	// google.protobuf.Timestamp and its extra import.
+	string created_at = 6;
+	string updated_at = 7;
+}
+
+message ListPostsRequest {
+	// Unset means 0 in proto3, which the server reads as "use the default".
+	int32 limit = 1;
+	bool published_only = 2;
+}
+
+message ListPostsResponse {
+	repeated Post posts = 1;
+}
+
+message GetPostRequest {
+	string id = 1;
+}
+
+message CreatePostRequest {
+	string title = 1;
+	string body = 2;
+	bool published = 3;
+	// No author field, on purpose: authorship comes from the token, not the caller.
+}
+
+// `optional` gives these fields real presence tracking, so the server can tell
+// "set it to empty" apart from "leave it alone" on a partial update.
+message UpdatePostRequest {
+	string id = 1;
+	optional string title = 2;
+	optional string body = 3;
+	optional bool published = 4;
+}
+
+message DeletePostRequest {
+	string id = 1;
+}
+
+message DeletePostResponse {
+	string id = 1;
+}

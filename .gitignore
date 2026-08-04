@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Environment - .env.example is committed, every other .env is not
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Editors / OS
+.DS_Store
+.idea/
+
+# Test output
+coverage/

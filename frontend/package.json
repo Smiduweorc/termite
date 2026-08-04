@@ -1,0 +1,29 @@
+{
+	"name": "@bevd/frontend",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "vue-tsc --noEmit && vite build",
+		"preview": "vite preview",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"typecheck": "vue-tsc --noEmit"
+	},
+	"dependencies": {
+		"@bevd/backend": "workspace:*",
+		"@trpc/client": "^11.18.0",
+		"vue": "^3.5.39"
+	},
+	"devDependencies": {
+		"@types/node": "^24.12.3",
+		"@vitejs/plugin-vue": "^6.0.7",
+		"@vue/test-utils": "^2.4.11",
+		"@vue/tsconfig": "^0.9.1",
+		"happy-dom": "^20.10.6",
+		"vite": "^8.1.4",
+		"vitest": "^4.1.10",
+		"vue-tsc": "^3.3.7"
+	}
+}

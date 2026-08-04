@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package bevd.user.v1;
+
+import "auth.proto";
+
+// Admin only, every method. A missing token is UNAUTHENTICATED; a valid token belonging
+// to an ordinary user is PERMISSION_DENIED.
+service UserService {
+	rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+	rpc SetUserRole(SetUserRoleRequest) returns (bevd.auth.v1.User);
+	rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
+}
+
+message ListUsersRequest {}
+
+message ListUsersResponse {
+	repeated bevd.auth.v1.User users = 1;
+}
+
+message SetUserRoleRequest {
+	string user_id = 1;
+	// "user" or "admin".
+	string role = 2;
+}
+
+message DeleteUserRequest {
+	string user_id = 1;
+}
+
+message DeleteUserResponse {
+	string id = 1;
+}

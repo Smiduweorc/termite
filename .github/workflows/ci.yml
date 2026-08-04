@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Lint + format
+        run: bun run lint
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      # Tests run against PGlite (Postgres in-process), so no database service here.
+      - name: Test
+        run: bun run test
+
+      # Frontend only - the backend ships as TypeScript and is not bundled.
+      - name: Build
+        run: bun run build
+
+      # Everything above this line passes on a server that cannot start: the tests import
+      # src/ directly and never boot the process. So boot it, exactly as the container
+      # does - `bun run start` from backend/ - and make it answer.
+      #
+      # This step is not decoration. argon2 is a native addon, and the failure it guards
+      # against is one where every test passes, the build exits 0, and the image dies on
+      # its first line because the .node binary cannot be resolved.
+      #
+      # No database is needed: pg connects lazily, so /health responds without one.
+      - name: Smoke test - the server actually boots
+        working-directory: backend
+        env:
+          NODE_ENV: production
+          PORT: "3000"
+          GRPC_PORT: "50051"
+          LOG_LEVEL: info
+          SERVICE_NAME: ci-smoke
+          DATABASE_URL: postgres://unused:unused@localhost:5432/unused
+          CORS_ORIGIN: http://localhost:5173
+          # A throwaway key, but a random-looking one: lacewing entropy-checks
+          # it at boot and a "ci-smoke-secret..." style string refuses to import.
+          JWT_SECRET: KxTa6t5hnM9lWSWZclyiVjcc+E+s7smif8Tvvrorh0TgxU5lzqpu1AsVsQTjMMZb
+          JWT_ACCESS_EXPIRY: 15m
+          JWT_ISSUER: http://localhost:3000
+          JWT_AUDIENCE: http://localhost:3000/trpc
+          REFRESH_TOKEN_TTL_DAYS: "7"
+          COOKIE_SAME_SITE: lax
+        run: |
+          bun run start &
+          server=$!
+          trap 'kill $server 2>/dev/null' EXIT
+
+          for _ in $(seq 1 30); do
+            if curl -fsS http://localhost:3000/health; then
+              echo
+              echo "server booted and served /health"
+              exit 0
+            fi
+            # Still starting, or already dead - if it is dead, stop waiting on a corpse.
+            kill -0 $server 2>/dev/null || { echo "server exited during startup"; exit 1; }
+            sleep 1
+          done
+
+          echo "server never answered /health"
+          exit 1

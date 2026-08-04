@@ -1,0 +1,63 @@
+{
+	// This is .jsonc, not .json, on purpose: Biome treats a comment in biome.json as a
+	// parse error and then falls back to defaults *silently* - your rules look applied
+	// but are not. Keep the extension if you want the comments below.
+	"$schema": "https://biomejs.dev/schemas/2.5.3/schema.json",
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
+	},
+	"files": {
+		"includes": ["**", "!**/dist", "!**/node_modules", "!backend/drizzle"]
+	},
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab",
+		"indentWidth": 4,
+		"lineEnding": "lf",
+		"lineWidth": 100
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"preset": "recommended",
+			"suspicious": {
+				// The templates ship a logger (src/lib/logger.ts). Nothing should write
+				// to console directly.
+				"noConsole": "error"
+			}
+		}
+	},
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "double",
+			"semicolons": "always",
+			"trailingCommas": "all"
+		}
+	},
+	"json": {
+		"formatter": {
+			"indentStyle": "tab"
+		}
+	},
+	"overrides": [
+		{
+			// Biome reads a Vue SFC's <script> block on its own and never sees the
+			// <template>, so anything used only in markup looks dead to it. Left on,
+			// these two rules flag every component import and event handler - and both
+			// are fixable, so `biome check --write --unsafe` would delete them.
+			// vue-tsc does parse templates and still fails on genuinely unused code
+			// (noUnusedLocals in frontend/tsconfig.json), so no coverage is lost.
+			"includes": ["**/*.vue"],
+			"linter": {
+				"rules": {
+					"correctness": {
+						"noUnusedImports": "off",
+						"noUnusedVariables": "off"
+					}
+				}
+			}
+		}
+	]
+}
