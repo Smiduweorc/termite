@@ -1,9 +1,11 @@
 import type { Database } from "../db";
 import type { Actor } from "../lib/actor";
 import { logger } from "../lib/logger";
+import { voterKeyFor } from "../lib/voter";
 import type { ActorSource } from "../trpc/context";
 import { appRouter } from "../trpc/routers";
 import { createCallerFactory } from "../trpc/trpc";
+import { createTestMailer, type TestMailer } from "./mail";
 
 const createCaller = createCallerFactory(appRouter);
 
@@ -15,6 +17,13 @@ interface CallerOptions {
 	actorSource?: ActorSource | null;
 	refreshToken?: string;
 	csrf?: { cookie?: string; header?: string };
+	/**
+	 * Stands in for the voter cookie a browser would carry. Defaults to the signed-in
+	 * actor's key, or to nobody - which is what an anonymous first-time visitor is.
+	 */
+	voterToken?: string;
+	/** Defaults to a fresh capturing mailer, returned alongside the caller. */
+	mail?: TestMailer;
 }
 
 /**
@@ -27,14 +36,17 @@ interface CallerOptions {
  */
 export function callerWithHeaders(
 	db: Database,
-	{ actor = null, actorSource, refreshToken, csrf }: CallerOptions = {},
+	{ actor = null, actorSource, refreshToken, csrf, voterToken, mail }: CallerOptions = {},
 ) {
 	const resHeaders = new Headers();
+	const mailer = mail ?? createTestMailer();
 
 	const trpc = createCaller({
 		db,
+		mail: mailer,
 		actor,
 		actorSource: actorSource !== undefined ? actorSource : actor ? "direct" : null,
+		voterKey: voterKeyFor(actor, voterToken),
 		resHeaders,
 		refreshToken,
 		csrf: { cookie: csrf?.cookie, header: csrf?.header },
@@ -43,7 +55,7 @@ export function callerWithHeaders(
 		log: logger,
 	});
 
-	return { trpc, resHeaders };
+	return { trpc, resHeaders, mail: mailer };
 }
 
 /** The common case: act as this user (or as nobody) and ignore the response headers. */

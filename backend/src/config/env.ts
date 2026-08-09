@@ -30,6 +30,24 @@ const Env = type({
 	// works; anything non-local must be https. "none" is likewise not an
 	// option - cross-site token cookies are how CSRF happens.
 	COOKIE_SAME_SITE: "'lax' | 'strict'",
+
+	// Where the board is served to people, which is what an invite or reset link has to
+	// point at. It is the frontend's origin, not the API's.
+	APP_URL: "string > 0",
+
+	// --- Mail -----------------------------------------------------------------------
+	// SMTP is optional, and an empty host is a supported configuration rather than a
+	// broken one: a self-hosted board with no mail server still works, it just prints
+	// the link to the log for the maintainer to pass on by hand. See lib/mailer.ts.
+	SMTP_HOST: "string",
+	SMTP_PORT: "1 <= number <= 65535",
+	// Implicit TLS on connect (port 465). Leave it off for 587, which upgrades with
+	// STARTTLS - nodemailer does that on its own, and refuses to send in the clear.
+	SMTP_SECURE: "boolean",
+	SMTP_USER: "string",
+	SMTP_PASSWORD: "string",
+	// What the recipient sees in From:. Plain address or "Name <address>".
+	MAIL_FROM: "string > 0",
 });
 
 // Defaults are applied before validation so the schema stays a plain shape check -
@@ -39,7 +57,7 @@ const result = Env({
 	PORT: Number(process.env.PORT ?? 3000),
 	GRPC_PORT: Number(process.env.GRPC_PORT ?? 50051),
 	LOG_LEVEL: process.env.LOG_LEVEL ?? "info",
-	SERVICE_NAME: process.env.SERVICE_NAME ?? "bevd-lacewing-backend",
+	SERVICE_NAME: process.env.SERVICE_NAME ?? "termite-backend",
 	DATABASE_URL: process.env.DATABASE_URL ?? "",
 	CORS_ORIGIN: process.env.CORS_ORIGIN ?? "http://localhost:5173",
 	JWT_SECRET: process.env.JWT_SECRET ?? "",
@@ -48,6 +66,13 @@ const result = Env({
 	JWT_AUDIENCE: process.env.JWT_AUDIENCE ?? "http://localhost:3000/trpc",
 	REFRESH_TOKEN_TTL_DAYS: Number(process.env.REFRESH_TOKEN_TTL_DAYS ?? 7),
 	COOKIE_SAME_SITE: process.env.COOKIE_SAME_SITE ?? "lax",
+	APP_URL: process.env.APP_URL ?? "http://localhost:5173",
+	SMTP_HOST: process.env.SMTP_HOST ?? "",
+	SMTP_PORT: Number(process.env.SMTP_PORT ?? 587),
+	SMTP_SECURE: (process.env.SMTP_SECURE ?? "false") === "true",
+	SMTP_USER: process.env.SMTP_USER ?? "",
+	SMTP_PASSWORD: process.env.SMTP_PASSWORD ?? "",
+	MAIL_FROM: process.env.MAIL_FROM ?? "Termite <termite@localhost>",
 });
 
 if (result instanceof type.errors) {

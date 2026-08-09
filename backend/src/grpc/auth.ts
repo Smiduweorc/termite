@@ -10,7 +10,7 @@ import { verifyAccessToken } from "../lib/jwt";
  *
  *   const metadata = new grpc.Metadata();
  *   metadata.set("authorization", `Bearer ${accessToken}`);
- *   client.CreatePost(request, metadata, callback);
+ *   client.SubmitFeedback(request, metadata, callback);
  *
  * The header goes through lacewing's parseBearer - strict RFC 6750, exactly
  * one well-formed `Bearer <token>`, exact-case scheme, no smuggling a second

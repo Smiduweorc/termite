@@ -5,6 +5,8 @@ import type { Actor } from "../lib/actor";
 import { ACCESS_COOKIE, CSRF_COOKIE, REFRESH_COOKIE } from "../lib/cookies";
 import { verifyAccessToken } from "../lib/jwt";
 import type { Logger } from "../lib/logger";
+import type { Mailer } from "../lib/mailer";
+import { VOTER_COOKIE, voterKeyFor } from "../lib/voter";
 
 /**
  * Where the actor's token came from. It matters for exactly one thing: CSRF.
@@ -18,11 +20,19 @@ export type ActorSource = "cookie" | "bearer" | "direct";
 
 export interface Context {
 	db: Database;
+	/** Invites and password resets. Built once at boot; see lib/mailer.ts. */
+	mail: Mailer;
 	req: Request;
 	resHeaders: Headers;
 	/** Null for an anonymous caller. Procedures decide whether that is allowed. */
 	actor: Actor | null;
 	actorSource: ActorSource | null;
+	/**
+	 * Who this caller votes as: their account if signed in, the hash of their voter
+	 * cookie if not, null if they have neither yet. The board hands this to the
+	 * services - they never see the cookie. See lib/voter.ts.
+	 */
+	voterKey: string | null;
 	/** Only auth.refresh and auth.logout look at this. */
 	refreshToken: string | undefined;
 	/** The two halves of the double-submit pair; trpc.ts compares them. */
@@ -35,6 +45,7 @@ export interface Context {
 
 export interface ContextDeps {
 	db: Database;
+	mail: Mailer;
 	requestId: string;
 	log: Logger;
 }
@@ -81,16 +92,18 @@ async function resolveActor(
 	}
 }
 
-export function createContextFactory({ db, requestId, log }: ContextDeps) {
+export function createContextFactory({ db, mail, requestId, log }: ContextDeps) {
 	return async ({ req, resHeaders }: FetchCreateContextFnOptions): Promise<Context> => {
 		const { actor, source } = await resolveActor(req);
 
 		return {
 			db,
+			mail,
 			req,
 			resHeaders,
 			actor,
 			actorSource: source,
+			voterKey: voterKeyFor(actor, readTokenCookie(req, VOTER_COOKIE)),
 			// Both read with lacewing's readTokenCookie rather than a general
 			// cookie parser, for the duplicate-name case. Nothing settles whether
 			// the first or the last `csrf_token=` wins when a header carries two,

@@ -3,12 +3,25 @@ import { env } from "./config/env";
 import { createDatabase } from "./db";
 import { createGrpcServer, startGrpcServer } from "./grpc/server";
 import { logger } from "./lib/logger";
+import { createMailer } from "./lib/mailer";
 
 const { db, pool } = createDatabase(env.DATABASE_URL);
 
+// One transport for the whole process, so the SMTP connection pool is shared rather than
+// rebuilt per message. With no SMTP_HOST set this is the log-only mailer - see
+// lib/mailer.ts, and note the warning below.
+const mail = createMailer();
+
+if (!env.SMTP_HOST) {
+	logger.warn(
+		{ event: "mail.disabled" },
+		"SMTP_HOST is not set: invite and reset links will be written to this log instead of emailed",
+	);
+}
+
 // HTTP (Elysia: REST + tRPC) and gRPC are two doors into the same services.
-const app = createApp({ db });
-const grpcServer = createGrpcServer(db);
+const app = createApp({ db, mail });
+const grpcServer = createGrpcServer(db, mail);
 
 app.listen(env.PORT, (server) => {
 	logger.info(

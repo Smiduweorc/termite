@@ -2,15 +2,12 @@ import type { PublicUser } from "../../db/schema";
 import { clearedCookies, sessionCookies } from "../../lib/cookies";
 import { generateCsrfToken } from "../../lib/csrf";
 import {
-	LoginInput,
-	login,
-	logout,
-	me,
-	RegisterInput,
-	refresh,
-	register,
-	type Session,
-} from "../../services/auth.service";
+	RequestResetInput,
+	requestPasswordReset,
+	SetPasswordInput,
+	setPassword,
+} from "../../services/account.service";
+import { LoginInput, login, logout, me, refresh, type Session } from "../../services/auth.service";
 import type { Context } from "../context";
 import { protectedProcedure, publicProcedure, router } from "../trpc";
 
@@ -34,14 +31,14 @@ function commitSession(ctx: Context, session: Session): PublicUser {
 	return session.user;
 }
 
+/**
+ * No register procedure, on purpose.
+ *
+ * Accounts come from the maintainer (user.create) and are picked up with an emailed
+ * link (auth.setPassword). The two procedures below are the only public way to touch a
+ * password, and neither of them can create an account or reveal whether one exists.
+ */
 export const authRouter = router({
-	/** trpc.auth.register.mutate({ email, name, password }) */
-	register: publicProcedure
-		.input(RegisterInput)
-		.mutation(async ({ ctx, input }) =>
-			commitSession(ctx, await register(ctx.db, ctx.log, input)),
-		),
-
 	/** trpc.auth.login.mutate({ email, password }) */
 	login: publicProcedure
 		.input(LoginInput)
@@ -69,6 +66,27 @@ export const authRouter = router({
 
 		return { ok: true as const };
 	}),
+
+	/**
+	 * trpc.auth.forgotPassword.mutate({ email })
+	 *
+	 * Answers `{ ok: true }` whether or not the address has an account - otherwise this
+	 * form would be a way to find out which ones do.
+	 */
+	forgotPassword: publicProcedure
+		.input(RequestResetInput)
+		.mutation(({ ctx, input }) => requestPasswordReset(ctx.db, ctx.log, ctx.mail, input)),
+
+	/**
+	 * trpc.auth.setPassword.mutate({ token, password })
+	 *
+	 * Spends an invite or reset link. It does not sign the caller in: proving you can
+	 * read an inbox is enough to set a password, and a session on top of that is one
+	 * more thing a forwarded email could hand away. They sign in normally afterwards.
+	 */
+	setPassword: publicProcedure
+		.input(SetPasswordInput)
+		.mutation(({ ctx, input }) => setPassword(ctx.db, ctx.log, input)),
 
 	/** trpc.auth.me.query() - 401 when signed out, which is how the client knows. */
 	me: protectedProcedure.query(({ ctx }) => me(ctx.db, ctx.actor)),

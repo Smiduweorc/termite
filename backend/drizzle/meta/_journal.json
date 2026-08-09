@@ -5,8 +5,22 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1783789399540,
-      "tag": "0000_brave_senator_kelly",
+      "when": 1786210752342,
+      "tag": "0000_board",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786257314389,
+      "tag": "0001_accounts_and_tasks",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786258710042,
+      "tag": "0002_canonical_email",
       "breakpoints": true
     }
   ]

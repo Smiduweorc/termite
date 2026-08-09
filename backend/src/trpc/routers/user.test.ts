@@ -94,14 +94,23 @@ describe("admin-only user router", () => {
 		expect(after?.revokedAt).toBeInstanceOf(Date);
 	});
 
-	it("deletes a user and their posts with them", async () => {
-		await callerAs(db, actorFor(member)).post.create({ title: "Bob's", body: "x" });
+	it("deletes a user but leaves the feedback they filed on the board", async () => {
+		await callerAs(db, actorFor(member)).feedback.submit({
+			kind: "bug",
+			title: "Bob's report",
+			body: "x",
+		});
 
 		await expect(
 			callerAs(db, actorFor(admin)).user.delete({ userId: member.id }),
 		).resolves.toEqual({ id: member.id });
 
-		// The posts went with the cascade in db/schema.ts.
-		await expect(callerAs(db, actorFor(admin)).post.list({})).resolves.toHaveLength(0);
+		// `set null` rather than cascade, deliberately: a bug report is the board's, not
+		// the account's, and closing an account should not quietly delete what the
+		// project learned from it. It just becomes anonymous, like most of the board.
+		const [item] = await callerAs(db, actorFor(admin)).feedback.list({});
+
+		expect(item?.title).toBe("Bob's report");
+		expect(item?.authorId).toBeNull();
 	});
 });

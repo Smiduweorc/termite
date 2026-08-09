@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { Database } from "../../db";
 import { ACCESS_COOKIE, CSRF_COOKIE, REFRESH_COOKIE } from "../../lib/cookies";
 import { verifyAccessToken } from "../../lib/jwt";
+import { seedUser } from "../../test/auth";
 import { callerWithHeaders } from "../../test/context";
 import { createTestDatabase } from "../../test/db";
 
@@ -15,21 +16,33 @@ function cookiesFrom(headers: Headers): Record<string, string> {
 	);
 }
 
-const ALICE = { email: "alice@example.com", name: "Alice", password: "password123" };
+const CREDENTIALS = { email: "alice@example.com", password: "password123" };
 
 describe("auth", () => {
 	let db: Database;
 
 	beforeEach(async () => {
 		db = await createTestDatabase();
+
+		// Seeded rather than registered: there is no registration. Accounts come from a
+		// maintainer, and the invite that activates them is covered in account.test.ts.
+		await seedUser(db, { email: "alice@example.com", name: "Alice" });
 	});
 
-	it("registers a user, sets httpOnly cookies, and never returns the hash", async () => {
+	it("has no register procedure at all", () => {
+		const { trpc } = callerWithHeaders(db);
+
+		// Not merely guarded - absent. There is no self-service path to an account, so
+		// there is no endpoint to find, rate-limit or forget to lock down later.
+		expect("register" in trpc.auth).toBe(false);
+	});
+
+	it("signs in, sets httpOnly cookies, and never returns the hash", async () => {
 		const { trpc, resHeaders } = callerWithHeaders(db);
 
-		const user = await trpc.auth.register({ ...ALICE, email: "Alice@Example.com" });
-
 		// Email is normalised, so Alice@ and alice@ are the same account.
+		const user = await trpc.auth.login({ ...CREDENTIALS, email: "Alice@Example.com" });
+
 		expect(user.email).toBe("alice@example.com");
 		expect(user.role).toBe("user");
 		expect(user).not.toHaveProperty("passwordHash");
@@ -56,7 +69,7 @@ describe("auth", () => {
 	it("issues an access token that carries the user's id and role", async () => {
 		const { trpc, resHeaders } = callerWithHeaders(db);
 
-		const user = await trpc.auth.register(ALICE);
+		const user = await trpc.auth.login(CREDENTIALS);
 
 		const token = cookiesFrom(resHeaders)[ACCESS_COOKIE];
 		const payload = await verifyAccessToken(token ?? "");
@@ -67,7 +80,7 @@ describe("auth", () => {
 	it("mints RFC 9068 access tokens: typ at+jwt, pinned iss/aud, unique jti", async () => {
 		const { trpc, resHeaders } = callerWithHeaders(db);
 
-		await trpc.auth.register(ALICE);
+		await trpc.auth.login(CREDENTIALS);
 
 		// unsafeDecode is lacewing's inspection hatch: it parses without
 		// verifying and returns an UntrustedJwt that the type system refuses
@@ -83,54 +96,8 @@ describe("auth", () => {
 		expect(decoded.payload.jti).toEqual(expect.any(String));
 	});
 
-	it("cannot be tricked into registering an admin", async () => {
-		const { trpc } = callerWithHeaders(db);
-
-		// The extra field is not in the schema, so it never reaches the insert.
-		const user = await trpc.auth.register({
-			...ALICE,
-			email: "sneaky@example.com",
-			role: "admin",
-		} as never);
-
-		expect(user.role).toBe("user");
-	});
-
-	it("refuses a duplicate email", async () => {
-		const { trpc } = callerWithHeaders(db);
-
-		await trpc.auth.register(ALICE);
-
-		await expect(trpc.auth.register(ALICE)).rejects.toMatchObject({ code: "CONFLICT" });
-	});
-
-	it("refuses a duplicate even when two registrations race", async () => {
-		const { trpc } = callerWithHeaders(db);
-
-		// There is no "is this taken?" check to lose the race against - the UNIQUE index
-		// decides, and the loser is translated into a CONFLICT rather than blowing up as
-		// an unhandled 500.
-		const results = await Promise.allSettled([
-			trpc.auth.register(ALICE),
-			trpc.auth.register(ALICE),
-			trpc.auth.register(ALICE),
-		]);
-
-		const fulfilled = results.filter((r) => r.status === "fulfilled");
-		const rejected = results.filter((r) => r.status === "rejected");
-
-		expect(fulfilled).toHaveLength(1);
-		expect(rejected).toHaveLength(2);
-
-		for (const failure of rejected) {
-			expect(failure.reason).toMatchObject({ code: "CONFLICT" });
-		}
-	});
-
 	it("gives the same error for a wrong password and an unknown email", async () => {
 		const { trpc } = callerWithHeaders(db);
-
-		await trpc.auth.register(ALICE);
 
 		// Identical, so login cannot be used to discover which emails have accounts.
 		// (Each call is asserted where it is made: holding a rejected promise around for
@@ -153,18 +120,28 @@ describe("auth", () => {
 	it("logs in with the right password", async () => {
 		const { trpc } = callerWithHeaders(db);
 
-		await trpc.auth.register(ALICE);
+		await expect(trpc.auth.login(CREDENTIALS)).resolves.toMatchObject({
+			email: "alice@example.com",
+		});
+	});
 
-		await expect(
-			trpc.auth.login({ email: "alice@example.com", password: "password123" }),
-		).resolves.toMatchObject({ email: "alice@example.com" });
+	it("finds the account from any spelling that reaches the same mailbox", async () => {
+		await seedUser(db, { email: "John.Doe@gmail.com", name: "John" });
+
+		// Gmail ignores dots and everything after a "+", so all three of these are one
+		// inbox and therefore one account. See lib/email.ts.
+		for (const email of ["johndoe@gmail.com", "j.o.h.n.doe@gmail.com", "johndoe+x@gmail.com"]) {
+			await expect(
+				callerWithHeaders(db).trpc.auth.login({ email, password: "password123" }),
+			).resolves.toMatchObject({ email: "John.Doe@gmail.com" });
+		}
 	});
 
 	it("rotates the refresh token, and the old one stops working", async () => {
-		const registration = callerWithHeaders(db);
-		await registration.trpc.auth.register(ALICE);
+		const session = callerWithHeaders(db);
+		await session.trpc.auth.login(CREDENTIALS);
 
-		const firstToken = cookiesFrom(registration.resHeaders)[REFRESH_COOKIE];
+		const firstToken = cookiesFrom(session.resHeaders)[REFRESH_COOKIE];
 		expect(firstToken).toBeTruthy();
 
 		const first = callerWithHeaders(db, { refreshToken: firstToken });
@@ -186,16 +163,16 @@ describe("auth", () => {
 	});
 
 	it("revokes the refresh token on logout and clears the cookies", async () => {
-		const registration = callerWithHeaders(db);
-		await registration.trpc.auth.register(ALICE);
+		const session = callerWithHeaders(db);
+		await session.trpc.auth.login(CREDENTIALS);
 
-		const token = cookiesFrom(registration.resHeaders)[REFRESH_COOKIE];
+		const token = cookiesFrom(session.resHeaders)[REFRESH_COOKIE];
 
-		const session = callerWithHeaders(db, { refreshToken: token });
-		await session.trpc.auth.logout();
+		const out = callerWithHeaders(db, { refreshToken: token });
+		await out.trpc.auth.logout();
 
 		// Cookies are expired, not merely forgotten by the client.
-		const cleared = session.resHeaders.getSetCookie();
+		const cleared = out.resHeaders.getSetCookie();
 		expect(cleared.every((c) => c.includes("Max-Age=0"))).toBe(true);
 
 		const stored = await db.query.refreshTokens.findFirst();

@@ -4,20 +4,20 @@ import { env } from "../config/env";
 import type { Database } from "../db";
 import { type PublicUser, refreshTokens, toPublicUser, users } from "../db/schema";
 import { type Actor, requireActor } from "../lib/actor";
-import { AppError, isUniqueViolation, parseInput } from "../lib/errors";
+import { canonicalEmail } from "../lib/email";
+import { AppError, parseInput } from "../lib/errors";
 import { signAccessToken } from "../lib/jwt";
 import type { Logger } from "../lib/logger";
 import { hashPassword, verifyPassword } from "../lib/password";
 import { generateRefreshToken, hashRefreshToken } from "../lib/tokens";
 
-export const RegisterInput = type({
-	email: "string.email",
-	name: "1 <= string <= 100",
-	// argon2 has no length ceiling of its own - the cap is here only to stop someone
-	// posting a megabyte and making us hash it. (bcrypt would have forced 72.)
-	password: "8 <= string <= 128",
-});
-
+/**
+ * There is no register input, and no register procedure.
+ *
+ * Accounts are created by a maintainer and picked up through an emailed invite - see
+ * services/account.service.ts. Nothing on the public board needs an account, so
+ * self-service signup would only ever have produced accounts nobody asked for.
+ */
 export const LoginInput = type({
 	email: "string.email",
 	password: "1 <= string <= 128",
@@ -55,48 +55,13 @@ async function issueSession(tx: Pick<Database, "insert">, user: PublicUser): Pro
 	return { user, accessToken, refreshToken };
 }
 
-export async function register(db: Database, log: Logger, input: unknown): Promise<Session> {
-	const { email, name, password } = parseInput(RegisterInput, input);
-
-	const normalisedEmail = email.toLowerCase();
-
-	try {
-		const [user] = await db
-			.insert(users)
-			.values({
-				email: normalisedEmail,
-				name,
-				passwordHash: await hashPassword(password),
-				// Never take the role from input - that would let anyone register as an
-				// admin. Promotion happens through the admin-only user.setRole procedure.
-				role: "user",
-			})
-			.returning();
-
-		if (!user) {
-			throw new AppError("INTERNAL", "Insert returned no row");
-		}
-
-		log.info({ event: "auth.register", userId: user.id }, "user registered");
-
-		return await issueSession(db, toPublicUser(user));
-	} catch (error) {
-		// The UNIQUE index on email is what decides this, not a lookup beforehand.
-		if (isUniqueViolation(error)) {
-			log.info({ event: "auth.register.duplicate" }, "registration rejected");
-
-			throw new AppError("CONFLICT", "That email is already registered");
-		}
-
-		throw error;
-	}
-}
-
 export async function login(db: Database, log: Logger, input: unknown): Promise<Session> {
 	const { email, password } = parseInput(LoginInput, input);
 
+	// Looked up by mailbox, not by spelling: whichever form of their address someone
+	// remembers typing, it finds the one account. See lib/email.ts.
 	const user = await db.query.users.findFirst({
-		where: eq(users.email, email.toLowerCase()),
+		where: eq(users.emailCanonical, canonicalEmail(email)),
 	});
 
 	// One message for "no such user" and "wrong password", on purpose: a different answer

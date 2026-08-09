@@ -1,6 +1,7 @@
 import type { Database } from "../db";
 import { type PublicUser, toPublicUser, type UserRole, users } from "../db/schema";
 import type { Actor } from "../lib/actor";
+import { canonicalEmail } from "../lib/email";
 import { signAccessToken } from "../lib/jwt";
 import { hashPassword } from "../lib/password";
 
@@ -23,7 +24,13 @@ export async function seedUser(
 ): Promise<PublicUser> {
 	const [user] = await db
 		.insert(users)
-		.values({ email, name, passwordHash: await hashPassword(password), role })
+		.values({
+			email,
+			emailCanonical: canonicalEmail(email),
+			name,
+			passwordHash: await hashPassword(password),
+			role,
+		})
 		.returning();
 
 	if (!user) throw new Error("seedUser: insert returned no row");

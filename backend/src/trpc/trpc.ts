@@ -80,22 +80,29 @@ const observe = t.middleware(async ({ ctx, next, path, type }) => {
 });
 
 /**
- * Double-submit CSRF, applied exactly where the attack exists: mutations
- * whose caller was authenticated by a cookie. A cross-site page can make the
- * browser send our cookies, but it cannot read them - so it can never echo
- * the csrf_token cookie back in the x-csrf-token header.
+ * Double-submit CSRF, applied exactly where the attack exists: mutations from a browser
+ * that is carrying cookies we would otherwise act on. A cross-site page can make the
+ * browser send our cookies, but it cannot read them - so it can never echo the
+ * csrf_token cookie back in the x-csrf-token header.
  *
- * Bearer-authenticated calls are exempt (attaching the header proves the
- * caller could read the token, which a cross-site page cannot), as are
- * anonymous mutations like login and register - those have no session to
- * ride, and SameSite already keeps them same-origin.
+ * Two things trigger it. A cookie-authenticated session, obviously. And the mere
+ * presence of a csrf_token cookie, which is what covers the anonymous half of the board:
+ * an unregistered voter has no session to ride, but they do have a voter cookie, and a
+ * forged vote is still a forged vote. Minting that voter cookie mints this one alongside
+ * it (see lib/cookies.ts), so the pair either both exist or both do not.
+ *
+ * The one request that necessarily escapes is a browser's very first mutation, before
+ * either cookie exists - there is nothing to double-submit yet. It costs an attacker
+ * exactly one anonymous vote under a brand-new identity, which is no more than curl
+ * gives them for free.
+ *
+ * Bearer-authenticated calls are exempt: attaching the header proves the caller could
+ * read the token, which a cross-site page cannot.
  */
 const csrfGuard = t.middleware(({ ctx, type, next }) => {
-	if (
-		type === "mutation" &&
-		ctx.actorSource === "cookie" &&
-		!csrfTokensMatch(ctx.csrf.cookie, ctx.csrf.header)
-	) {
+	const cookieBorne = ctx.actorSource === "cookie" || ctx.csrf.cookie !== undefined;
+
+	if (type === "mutation" && cookieBorne && !csrfTokensMatch(ctx.csrf.cookie, ctx.csrf.header)) {
 		ctx.log.warn({ event: "csrf.denied" }, "mutation refused: bad or missing CSRF token");
 
 		throw new TRPCError({ code: "FORBIDDEN", message: "CSRF token missing or invalid" });

@@ -15,3 +15,19 @@ export function generateRefreshToken(): string {
 export function hashRefreshToken(token: string): string {
 	return createHash("sha256").update(token).digest("hex");
 }
+
+/**
+ * The token in an invite or password-reset link. Same shape, same reasoning: 256 bits of
+ * opaque randomness, stored only as its hash, so the row is not itself a working link.
+ *
+ * Named apart from the refresh pair because they are not interchangeable - one is a
+ * session credential, the other arrives in someone's inbox - and a future change to
+ * either should not silently follow the other.
+ */
+export function generateLinkToken(): string {
+	return randomBytes(32).toString("base64url");
+}
+
+export function hashLinkToken(token: string): string {
+	return createHash("sha256").update(token).digest("hex");
+}

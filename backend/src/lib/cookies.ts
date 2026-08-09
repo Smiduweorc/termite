@@ -1,6 +1,7 @@
 import { stringifySetCookie } from "cookie";
 import { buildTokenCookie, clearTokenCookie } from "lacewing";
 import { env } from "../config/env";
+import { VOTER_COOKIE, VOTER_COOKIE_MAX_AGE_SECONDS } from "./voter";
 
 export const ACCESS_COOKIE = "access_token";
 export const REFRESH_COOKIE = "refresh_token";
@@ -19,6 +20,24 @@ export const CSRF_COOKIE = "csrf_token";
  */
 const SAME_SITE = env.COOKIE_SAME_SITE === "strict" ? "Strict" : "Lax";
 
+/**
+ * The CSRF cookie is the one cookie that must NOT be httpOnly - its whole job is to be
+ * read back by the page and echoed in a header, which is why it is built with `cookie`
+ * rather than lacewing. It carries no secret the server trusts on its own: only the
+ * cookie+header pair together pass.
+ */
+function csrfCookie(value: string, maxAgeSeconds: number): string {
+	return stringifySetCookie({
+		name: CSRF_COOKIE,
+		value,
+		httpOnly: false,
+		secure: true,
+		sameSite: env.COOKIE_SAME_SITE,
+		path: "/",
+		maxAge: maxAgeSeconds,
+	});
+}
+
 export function sessionCookies(
 	accessToken: string,
 	refreshToken: string,
@@ -35,19 +54,29 @@ export function sessionCookies(
 			sameSite: SAME_SITE,
 			maxAgeSeconds: env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60,
 		}),
-		// The CSRF cookie is the one cookie that must NOT be httpOnly - its whole
-		// job is to be read back by the page and echoed in a header, which is why
-		// it is built with `cookie` rather than lacewing. It carries no secret the
-		// server trusts on its own: only the cookie+header pair together pass.
-		stringifySetCookie({
-			name: CSRF_COOKIE,
-			value: csrfToken,
-			httpOnly: false,
-			secure: true,
-			sameSite: env.COOKIE_SAME_SITE,
-			path: "/",
-			maxAge: env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60,
+		csrfCookie(csrfToken, env.REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60),
+	];
+}
+
+/**
+ * The anonymous half: a voter token, and the CSRF token that protects it.
+ *
+ * Both are minted together on the first mutation from a browser that has neither, which
+ * is the only request that can reach a mutation without passing the double-submit check
+ * (there is nothing to double-submit yet). From the response onwards the pair exists, so
+ * every later vote from that browser has to prove it can read the CSRF cookie.
+ *
+ * The voter token itself is httpOnly: the page has no reason to read it, and a token the
+ * page cannot see is a token injected script cannot copy to vote as someone else.
+ */
+export function voterCookies(voterToken: string, csrfToken: string): string[] {
+	return [
+		buildTokenCookie(voterToken, {
+			name: VOTER_COOKIE,
+			sameSite: SAME_SITE,
+			maxAgeSeconds: VOTER_COOKIE_MAX_AGE_SECONDS,
 		}),
+		csrfCookie(csrfToken, VOTER_COOKIE_MAX_AGE_SECONDS),
 	];
 }
 
@@ -57,16 +86,8 @@ export function clearedCookies(): string[] {
 	clearTokenCookie(headers, { name: ACCESS_COOKIE });
 	clearTokenCookie(headers, { name: REFRESH_COOKIE });
 
-	return [
-		...headers.getSetCookie(),
-		stringifySetCookie({
-			name: CSRF_COOKIE,
-			value: "",
-			httpOnly: false,
-			secure: true,
-			sameSite: env.COOKIE_SAME_SITE,
-			path: "/",
-			maxAge: 0,
-		}),
-	];
+	// The voter cookie deliberately survives a sign-out: it is not a session, it is the
+	// browser's claim on the votes it already cast, and logging out of the maintainer
+	// account should not silently hand the same person a second ballot.
+	return [...headers.getSetCookie(), csrfCookie("", 0)];
 }

@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "./app";
 import { createDatabase, type Database } from "./db";
 import { ACCESS_COOKIE, CSRF_COOKIE } from "./lib/cookies";
+import { seedUser } from "./test/auth";
 import { createTestDatabase } from "./test/db";
+import { createTestMailer } from "./test/mail";
 
 /**
  * The full HTTP path through Elysia with `app.handle()` - no port is bound. This is what
@@ -15,7 +17,7 @@ describe("app over http", () => {
 
 	beforeEach(async () => {
 		db = await createTestDatabase();
-		app = createApp({ db });
+		app = createApp({ db, mail: createTestMailer() });
 	});
 
 	function trpc(
@@ -45,10 +47,16 @@ describe("app over http", () => {
 		csrfToken: string;
 	}
 
-	async function registerAlice(): Promise<BrowserSession> {
-		const response = await trpc("auth.register", {
+	/**
+	 * Signs in over real HTTP. There is no registration to do it with any more, so the
+	 * account is seeded straight into the database - which is what an invite would have
+	 * produced anyway (see account.test.ts for that path).
+	 */
+	async function signInAsAlice(): Promise<BrowserSession> {
+		await seedUser(db, { email: "alice@example.com", name: "Alice" });
+
+		const response = await trpc("auth.login", {
 			email: "alice@example.com",
-			name: "Alice",
 			password: "password123",
 		});
 
@@ -88,7 +96,10 @@ describe("app over http", () => {
 	it("rejects a protected mutation with no cookie", async () => {
 		// This is also the mutation that proves Elysia handed tRPC an intact request body
 		// rather than consuming it - a 401 means it parsed, a 500 would mean it did not.
-		const response = await trpc("post.create", { title: "Nope", body: "x" });
+		const response = await trpc("feedback.edit", {
+			id: "11111111-1111-4111-8111-111111111111",
+			title: "Nope",
+		});
 
 		expect(response.status).toBe(401);
 
@@ -97,28 +108,34 @@ describe("app over http", () => {
 	});
 
 	it("authenticates the next request with the cookie it just set", async () => {
-		const session = await registerAlice();
+		const session = await signInAsAlice();
 
 		const created = await trpc(
-			"post.create",
-			{ title: "With cookie", body: "x" },
+			"feedback.submit",
+			{ kind: "bug", title: "With cookie", body: "x" },
 			session.cookie,
 			session.csrfToken,
 		);
 		expect(created.status).toBe(200);
 
-		const body = (await created.json()) as { result: { data: { title: string } } };
+		// Anyone can file anonymously, so a 200 alone proves nothing about the session.
+		// The author id does: it comes from the cookie, and an anonymous submission
+		// would have left it null.
+		const body = (await created.json()) as {
+			result: { data: { title: string; authorId: string | null } };
+		};
 		expect(body.result.data.title).toBe("With cookie");
+		expect(body.result.data.authorId).not.toBeNull();
 	});
 
 	it("refuses a cookie-authenticated mutation without the CSRF header", async () => {
 		// This is the cross-site request: the browser attached the cookies on
 		// its own, but the page could not read csrf_token to set the header.
-		const session = await registerAlice();
+		const session = await signInAsAlice();
 
 		const response = await trpc(
-			"post.create",
-			{ title: "Riding the session", body: "x" },
+			"feedback.submit",
+			{ kind: "idea", title: "Riding the session", body: "x" },
 			session.cookie,
 		);
 
@@ -147,12 +164,12 @@ describe("app over http", () => {
 		// path specificity, so one set on a deeper path (/trpc) precedes the
 		// legitimate /-scoped one. A first-match parser - which is what `cookie`
 		// does - hands back exactly the value the attacker planted.
-		const session = await registerAlice();
+		const session = await signInAsAlice();
 		const attackerToken = "attackerchosencsrfvalue";
 
 		const response = await trpc(
-			"post.create",
-			{ title: "Tossed", body: "x" },
+			"feedback.submit",
+			{ kind: "idea", title: "Tossed", body: "x" },
 			`${CSRF_COOKIE}=${attackerToken}; ${session.cookie}`,
 			attackerToken,
 		);
@@ -164,7 +181,7 @@ describe("app over http", () => {
 	});
 
 	it("refuses a tampered cookie", async () => {
-		const session = await registerAlice();
+		const session = await signInAsAlice();
 
 		// Corrupt the access token specifically; the other cookies come along
 		// unchanged, as they would in a real browser.
@@ -174,13 +191,61 @@ describe("app over http", () => {
 		);
 
 		const response = await trpc(
-			"post.create",
-			{ title: "Nope", body: "x" },
+			"feedback.edit",
+			{ id: "11111111-1111-4111-8111-111111111111", title: "Nope" },
 			tampered,
 			session.csrfToken,
 		);
 
 		expect(response.status).toBe(401);
+	});
+
+	it("gives an anonymous voter a cookie, then holds them to CSRF", async () => {
+		// The whole no-account path, over real HTTP. Nobody signs in at any point.
+		const filed = await trpc("feedback.submit", {
+			kind: "bug",
+			title: "Filed by a stranger",
+			body: "No account, no email, no signup form.",
+		});
+
+		expect(filed.status).toBe(200);
+
+		const body = (await filed.json()) as {
+			result: { data: { id: string; votes: number; viewerHasVoted: boolean } };
+		};
+
+		// Filing counts as wanting the thing.
+		expect(body.result.data.votes).toBe(1);
+		expect(body.result.data.viewerHasVoted).toBe(true);
+
+		const pairs = filed.headers.getSetCookie().map((cookie) => cookie.split(";")[0] ?? "");
+		const cookie = pairs.join("; ");
+
+		expect(pairs.some((pair) => pair.startsWith("termite_voter="))).toBe(true);
+
+		const csrfToken =
+			pairs
+				.find((pair) => pair.startsWith(`${CSRF_COOKIE}=`))
+				?.slice(CSRF_COOKIE.length + 1) ?? "";
+
+		expect(csrfToken).not.toBe("");
+
+		// That first request was the one and only one that could skip the CSRF check -
+		// there was nothing to double-submit yet. Now that the browser holds the pair,
+		// a mutation that cannot echo it is refused, session or no session.
+		const forged = await trpc("feedback.unvote", { id: body.result.data.id }, cookie);
+		expect(forged.status).toBe(403);
+
+		const honest = await trpc(
+			"feedback.unvote",
+			{ id: body.result.data.id },
+			cookie,
+			csrfToken,
+		);
+		expect(honest.status).toBe(200);
+
+		const after = (await honest.json()) as { result: { data: { votes: number } } };
+		expect(after.result.data.votes).toBe(0);
 	});
 
 	it("echoes an inbound x-request-id, so a trace survives the hop", async () => {
@@ -198,7 +263,7 @@ describe("app over http", () => {
 		// procedure, which is exactly the case that used to hand the client the failing
 		// SQL, its parameters and a stack trace.
 		const { db: missing } = createDatabase("postgres://nobody:hunter2@127.0.0.1:59999/nope");
-		const broken = createApp({ db: missing });
+		const broken = createApp({ db: missing, mail: createTestMailer() });
 
 		const response = await broken.handle(
 			new Request("http://localhost/trpc/auth.login", {

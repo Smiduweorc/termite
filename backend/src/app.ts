@@ -5,14 +5,17 @@ import { Elysia } from "elysia";
 import { env } from "./config/env";
 import type { Database } from "./db";
 import { logger, requestIdFrom } from "./lib/logger";
+import type { Mailer } from "./lib/mailer";
 import { createContextFactory } from "./trpc/context";
 import { appRouter } from "./trpc/routers";
 
 export interface AppDeps {
 	db: Database;
+	/** Injected rather than imported, so a test can watch what would have been sent. */
+	mail: Mailer;
 }
 
-export function createApp({ db }: AppDeps) {
+export function createApp({ db, mail }: AppDeps) {
 	return (
 		new Elysia()
 			.use(cors({ origin: env.CORS_ORIGIN, credentials: true }))
@@ -76,7 +79,7 @@ export function createApp({ db }: AppDeps) {
 					createContext: (options) => {
 						options.resHeaders.set("x-request-id", requestId);
 
-						return createContextFactory({ db, requestId, log })(options);
+						return createContextFactory({ db, mail, requestId, log })(options);
 					},
 					// The per-procedure middleware logs everything that reaches a resolver.
 					// This catches what does not: an unknown procedure, a malformed body.
