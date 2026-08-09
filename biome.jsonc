@@ -9,7 +9,17 @@
 		"useIgnoreFile": true
 	},
 	"files": {
-		"includes": ["**", "!**/dist", "!**/node_modules", "!backend/drizzle"]
+		// The `assets` folders hold the logo: an exported SVG, not source, and not
+		// something to hand-edit to satisfy a linter that reads it as markup. The
+		// component that renders it supplies the alt text.
+		"includes": [
+			"**",
+			"!**/dist",
+			"!**/node_modules",
+			"!backend/drizzle",
+			"!assets",
+			"!frontend/src/assets"
+		]
 	},
 	"formatter": {
 		"enabled": true,

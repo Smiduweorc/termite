@@ -1,18 +1,18 @@
 services:
   postgres:
     image: postgres:17-alpine
-    container_name: bevd-base-postgres
+    container_name: termite-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: bevd
-      POSTGRES_PASSWORD: bevd
-      POSTGRES_DB: bevd
+      POSTGRES_USER: termite
+      POSTGRES_PASSWORD: termite
+      POSTGRES_DB: termite
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bevd -d bevd"]
+      test: ["CMD-SHELL", "pg_isready -U termite -d termite"]
       interval: 5s
       timeout: 5s
       retries: 10

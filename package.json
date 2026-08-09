@@ -1,9 +1,9 @@
 {
-	"name": "bevd-base-lacewing",
+	"name": "termite",
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
-	"description": "Bun + Elysia + Vue + Drizzle, with tRPC, gRPC, and JWT auth + CSRF built on lacewing.",
+	"description": "A self-hostable feedback board and release tracker for projects that ship in versions.",
 	"workspaces": [
 		"backend",
 		"frontend"
@@ -24,6 +24,7 @@
 		"db:migrate": "bun run --cwd backend db:migrate",
 		"db:studio": "bun run --cwd backend db:studio",
 		"db:seed": "bun run --cwd backend db:seed",
+		"admin:create": "bun run --cwd backend admin:create",
 		"prepare": "lefthook install"
 	},
 	"devDependencies": {
