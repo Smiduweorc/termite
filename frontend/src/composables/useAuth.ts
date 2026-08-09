@@ -36,9 +36,8 @@ export function useAuth() {
 		user.value = await trpc.auth.login.mutate({ email, password });
 	}
 
-	async function register(email: string, name: string, password: string): Promise<void> {
-		user.value = await trpc.auth.register.mutate({ email, name, password });
-	}
+	// There is no register(): accounts are created by a maintainer and activated with an
+	// emailed link, so the only way a session starts here is login().
 
 	async function logout(): Promise<void> {
 		await trpc.auth.logout.mutate();
@@ -50,7 +49,6 @@ export function useAuth() {
 		ready: readonly(ready),
 		load,
 		login,
-		register,
 		logout,
 	};
 }

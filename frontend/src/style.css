@@ -1,63 +1,294 @@
-:root {
-	--bg: #0b0f17;
-	--fg: #e6edf3;
-	--muted: #8b949e;
-	--border: #263041;
-	--accent: #4ade80;
+/*
+ * Termite's surface.
+ *
+ * The world is wood: a dark warm grain to bore through, a lamp-amber accent, and edges
+ * that look cut by something with mandibles rather than by a border-radius. Palette and
+ * type are lifted from grml's lab (grmlfolio.vercel.app) so this belongs to the same
+ * hand - #211d17 through #eee5d3 with #d99e45 as the light, Fraunces for the voice and
+ * IBM Plex for the working text.
+ *
+ * Three rules hold the whole thing together, and every component obeys them:
+ *   1. No shadows. Depth is tone - a surface one step lighter, an edge in its own
+ *      colour - never a box floating on a grey cloud.
+ *   2. No pill chips, no icon tiles, no glows, no gradients. Hierarchy is type.
+ *   3. Nothing is hidden waiting for an animation. Motion happens to things that are
+ *      already on screen.
+ */
 
-	color-scheme: dark light;
+@import "@fontsource-variable/fraunces/full.css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+
+:root {
+	/* The wood, from the darkest heart to the pale sapwood. */
+	--bg: #211d17;
+	--panel: #2b261e;
+	--raised: #363024;
+	--border: #413a2d;
+	--comment: #90836c;
+	--muted: #a99d87;
+	--fg: #cbc0aa;
+	--fg-strong: #eee5d3;
+	/* The one light in the room. Used for state, never as a coat of paint. */
+	--accent: #d99e45;
+
+	--font-display: "Fraunces Variable", Georgia, "Times New Roman", serif;
+	--font-sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+	/* Mono is for data that is genuinely data: versions, counts, dates. Not for voice. */
+	--font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+	/*
+	 * The hand-cut edge. Not a radius so much as a bite: each corner a different size,
+	 * the horizontal and vertical arcs deliberately mismatched, so a card looks gnawed
+	 * rather than rounded. Three variants, because ten identical bites is just a radius
+	 * with extra steps.
+	 */
+	--cut: 3px 7px 4px 6px / 6px 4px 7px 3px;
+	--cut-b: 6px 3px 7px 4px / 4px 7px 3px 6px;
+	--cut-tight: 2px 4px 3px 5px / 4px 3px 5px 2px;
+
+	color-scheme: dark;
 	background: var(--bg);
 	color: var(--fg);
-	font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+	font-family: var(--font-sans);
+	font-size: 16px;
 	line-height: 1.6;
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
 }
 
-@media (prefers-color-scheme: light) {
-	:root {
-		--bg: #ffffff;
-		--fg: #1f2328;
-		--muted: #656d76;
-		--border: #d0d7de;
-	}
+* {
+	box-sizing: border-box;
 }
 
 body {
 	margin: 0;
 	background: var(--bg);
 	color: var(--fg);
+	position: relative;
 }
 
+/*
+ * Grain on the substrate, never over the content.
+ *
+ * A flat fill this dark bands on cheap panels and reads as plastic; a fine noise makes
+ * it a material. It sits at z-index -1, behind everything, so no word is ever read
+ * through it. You should feel this, not see it.
+ */
+body::before {
+	content: "";
+	position: fixed;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	opacity: 0.5;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.06'/%3E%3C/svg%3E");
+}
+
+h1,
+h2,
+h3 {
+	font-family: var(--font-display);
+	/* Fraunces with its wonk and soft axes open: the display face has a face, rather
+	   than being a neutral serif set large. */
+	font-variation-settings:
+		"SOFT" 30,
+		"WONK" 1;
+	font-weight: 600;
+	color: var(--fg-strong);
+	line-height: 1.1;
+	margin: 0;
+}
+
+p {
+	margin: 0;
+}
+
+a {
+	color: var(--fg-strong);
+	text-decoration-color: var(--border);
+	text-underline-offset: 0.2em;
+}
+
+a:hover {
+	text-decoration-color: var(--accent);
+}
+
+/*
+ * One button shape for the whole app: a gnawed rectangle on a tonal surface.
+ *
+ * There is no filled-primary-beside-outlined-ghost pair anywhere in here. A button that
+ * matters gets a surface one step lighter than its neighbour; a button that does not
+ * gets no surface at all. Nothing lifts, nothing glows, nothing bounces on hover - the
+ * fill and the ink change, which is what a press actually looks like.
+ */
 button {
 	padding: 0.5rem 0.85rem;
 	border: 1px solid var(--border);
-	border-radius: 6px;
+	border-radius: var(--cut);
 	background: transparent;
-	color: inherit;
+	color: var(--fg);
 	font: inherit;
+	font-size: 0.95rem;
 	cursor: pointer;
+	transition:
+		background-color 140ms ease,
+		border-color 140ms ease,
+		color 140ms ease;
 }
 
 button:hover:not(:disabled) {
-	border-color: var(--accent);
+	border-color: var(--comment);
+	color: var(--fg-strong);
 }
 
 button:disabled {
-	opacity: 0.5;
+	opacity: 0.45;
 	cursor: not-allowed;
 }
 
+/* The one action a screen is actually about. A tonal step up, not a splash of amber. */
+button.primary {
+	background: var(--raised);
+	border-color: var(--raised);
+	color: var(--fg-strong);
+	font-weight: 500;
+}
+
+button.primary:hover:not(:disabled) {
+	background: var(--border);
+	border-color: var(--comment);
+}
+
+/* For the third-tier actions - cancel, delete, remove - which should not look like doors. */
+button.quiet {
+	padding: 0.2rem 0.35rem;
+	border-color: transparent;
+	background: transparent;
+	color: var(--muted);
+	font-size: 0.8rem;
+}
+
+button.quiet:hover:not(:disabled) {
+	border-color: transparent;
+	color: var(--fg-strong);
+}
+
 input,
-textarea {
+textarea,
+select {
 	padding: 0.55rem 0.7rem;
 	border: 1px solid var(--border);
-	border-radius: 6px;
-	background: transparent;
-	color: inherit;
+	border-radius: var(--cut-tight);
+	background: var(--bg);
+	color: var(--fg-strong);
 	font: inherit;
+	font-size: 0.95rem;
 	resize: vertical;
 }
 
-code {
-	font-family: ui-monospace, monospace;
+input::placeholder,
+textarea::placeholder {
+	color: var(--muted);
+}
+
+input:hover,
+textarea:hover,
+select:hover {
+	border-color: var(--comment);
+}
+
+select {
+	padding: 0.4rem 0.55rem;
+	cursor: pointer;
+}
+
+/* Amber earns its keep here: it is how you know where you are. */
+:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+
+input[type="checkbox"] {
+	accent-color: var(--accent);
+	width: 1rem;
+	height: 1rem;
+	padding: 0;
+	cursor: pointer;
+}
+
+::selection {
+	background: var(--accent);
+	color: var(--bg);
+}
+
+code,
+.mono {
+	font-family: var(--font-mono);
 	font-size: 0.9em;
+}
+
+/* A panel: the same wood, one step out of the dark, with an edge of its own colour. */
+.panel {
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: var(--cut);
+}
+
+/*
+ * Section headings sit in the display face at a real size. There is no eyebrow label
+ * above them, no little rule beside them, and no uppercase tracked-out kicker anywhere
+ * in this app - the heading is the heading.
+ */
+.section-title {
+	font-family: var(--font-display);
+	font-variation-settings:
+		"SOFT" 30,
+		"WONK" 1;
+	font-size: 1.35rem;
+	font-weight: 600;
+	color: var(--fg-strong);
+	margin: 0;
+}
+
+.error {
+	margin: 0;
+	color: #e2a08a;
+	font-size: 0.9rem;
+}
+
+.notice {
+	margin: 0;
+	color: var(--accent);
+	font-size: 0.9rem;
+}
+
+.hint,
+.empty {
+	margin: 0;
+	color: var(--muted);
+	font-size: 0.875rem;
+}
+
+/*
+ * Someone who has asked their system to stop moving things gets a still page.
+ *
+ * `!important` is the point rather than a smell here: this has to beat every scoped
+ * component rule that sets a transition or an animation, and the whole guarantee is
+ * that nothing can opt back in. Nothing on the page depends on motion to be readable,
+ * so switching it off costs the interface nothing at all.
+ */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		/* biome-ignore-start lint/complexity/noImportantStyles: an accessibility
+		   override that component styles must not be able to outrank. */
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		/* biome-ignore-end lint/complexity/noImportantStyles: see above. */
+	}
 }

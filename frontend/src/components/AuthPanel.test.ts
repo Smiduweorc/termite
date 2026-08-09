@@ -3,17 +3,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import AuthPanel from "./AuthPanel.vue";
 
 const login = vi.fn();
-const register = vi.fn();
+const forgotPassword = vi.fn();
 
 vi.mock("../composables/useAuth", () => ({
-	useAuth: () => ({ login, register }),
+	useAuth: () => ({ login }),
+}));
+
+vi.mock("../lib/trpc", () => ({
+	trpc: {
+		auth: {
+			forgotPassword: { mutate: (...args: unknown[]) => forgotPassword(...args) },
+		},
+	},
 }));
 
 describe("AuthPanel", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		login.mockResolvedValue(undefined);
-		register.mockResolvedValue(undefined);
+		forgotPassword.mockResolvedValue({ ok: true });
 	});
 
 	it("signs in with the entered credentials", async () => {
@@ -25,21 +33,35 @@ describe("AuthPanel", () => {
 		await flushPromises();
 
 		expect(login).toHaveBeenCalledWith("alice@example.com", "password123");
-		expect(register).not.toHaveBeenCalled();
 	});
 
-	it("registers when switched to the register tab", async () => {
+	it("offers no way to register, because there is none", async () => {
+		const wrapper = mount(AuthPanel);
+
+		const tabs = wrapper.findAll(".tabs button").map((tab) => tab.text());
+
+		// Sign in, or ask for a link back in. An account cannot be created from here by
+		// anyone, which is the whole change.
+		expect(tabs).toEqual(["Sign in", "Forgot password"]);
+		expect(wrapper.text()).toContain("there is no sign-up");
+	});
+
+	it("asks for a reset link, and says nothing about whether the account exists", async () => {
 		const wrapper = mount(AuthPanel);
 
 		await wrapper.findAll(".tabs button")[1]?.trigger("click");
 
-		await wrapper.find('input[type="email"]').setValue("new@example.com");
-		await wrapper.find('input[placeholder="Name"]').setValue("New Person");
-		await wrapper.find('input[type="password"]').setValue("password123");
+		// The password field is gone in this mode - there is nothing to prove yet.
+		expect(wrapper.find('input[type="password"]').exists()).toBe(false);
+
+		await wrapper.find('input[type="email"]').setValue("alice@example.com");
 		await wrapper.find("form").trigger("submit");
 		await flushPromises();
 
-		expect(register).toHaveBeenCalledWith("new@example.com", "New Person", "password123");
+		expect(forgotPassword).toHaveBeenCalledWith({ email: "alice@example.com" });
+		expect(wrapper.find('[role="status"]').text()).toBe(
+			"If that address has an account, a reset link is on its way.",
+		);
 		expect(login).not.toHaveBeenCalled();
 	});
 

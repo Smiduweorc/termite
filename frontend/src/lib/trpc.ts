@@ -1,4 +1,4 @@
-import type { AppRouter } from "@bevd/backend/trpc";
+import type { AppRouter } from "@termite/backend/trpc";
 import { createTRPCClient, httpBatchLink, type TRPCClient } from "@trpc/client";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
