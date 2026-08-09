@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package bevd.user.v1;
+package termite.user.v1;
 
 import "auth.proto";
 
@@ -8,14 +8,29 @@ import "auth.proto";
 // to an ordinary user is PERMISSION_DENIED.
 service UserService {
 	rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
-	rpc SetUserRole(SetUserRoleRequest) returns (bevd.auth.v1.User);
+	// The only way an account is created. It gets no usable password - the invite link
+	// that goes out by mail is what sets the first one.
+	rpc CreateUser(CreateUserRequest) returns (termite.auth.v1.User);
+	rpc ResendInvite(ResendInviteRequest) returns (termite.auth.v1.OkResponse);
+	rpc SetUserRole(SetUserRoleRequest) returns (termite.auth.v1.User);
 	rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
 }
 
 message ListUsersRequest {}
 
+message CreateUserRequest {
+	string email = 1;
+	string name = 2;
+	// "user" or "admin". Empty means "user".
+	string role = 3;
+}
+
+message ResendInviteRequest {
+	string user_id = 1;
+}
+
 message ListUsersResponse {
-	repeated bevd.auth.v1.User users = 1;
+	repeated termite.auth.v1.User users = 1;
 }
 
 message SetUserRoleRequest {

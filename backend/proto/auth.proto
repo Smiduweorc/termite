@@ -1,19 +1,27 @@
 syntax = "proto3";
 
-package bevd.auth.v1;
+package termite.auth.v1;
 
 // gRPC has no cookies, so tokens are returned in the response body and the caller sends
 // the access token back as `authorization: Bearer <jwt>` metadata on later calls.
 //
 // The browser never does this - it uses tRPC, where the same tokens go into httpOnly
 // cookies that JavaScript cannot read. Same service underneath, different envelope.
+//
+// There is no Register: accounts are created by a maintainer (see user.proto) and
+// activated with an emailed link, so there is nothing here for the public to sign up to.
 service AuthService {
-	rpc Register(RegisterRequest) returns (Session);
 	rpc Login(LoginRequest) returns (Session);
 	rpc Refresh(RefreshRequest) returns (Session);
 	rpc Logout(LogoutRequest) returns (LogoutResponse);
 	// Requires metadata. Returns who the token says you are.
 	rpc Me(MeRequest) returns (User);
+	// Always reports ok, account or no account - anything else would answer "does this
+	// address have an account here?" for whoever asks.
+	rpc ForgotPassword(ForgotPasswordRequest) returns (OkResponse);
+	// Spends an invite or reset link. Returns no session: setting a password and being
+	// signed in are separate steps.
+	rpc SetPassword(SetPasswordRequest) returns (OkResponse);
 }
 
 message User {
@@ -34,10 +42,18 @@ message Session {
 	string refresh_token = 3;
 }
 
-message RegisterRequest {
+message ForgotPasswordRequest {
 	string email = 1;
-	string name = 2;
-	string password = 3;
+}
+
+message SetPasswordRequest {
+	// The token out of the link, not the whole URL.
+	string token = 1;
+	string password = 2;
+}
+
+message OkResponse {
+	bool ok = 1;
 }
 
 message LoginRequest {

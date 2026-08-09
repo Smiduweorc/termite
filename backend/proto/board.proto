@@ -1,0 +1,156 @@
+syntax = "proto3";
+
+package termite.board.v1;
+
+// The board over gRPC: for scripts, bots and whatever else a maintainer wires up -
+// closing a merge window from a release script, mirroring the board into a changelog.
+//
+// Reading is open to anonymous callers, exactly as it is over HTTP. Writing needs an
+// access token in the request metadata: `authorization: Bearer <jwt>`. See src/grpc/auth.ts.
+service FeedbackService {
+	rpc ListFeedback(ListFeedbackRequest) returns (ListFeedbackResponse);
+	rpc GetFeedback(GetFeedbackRequest) returns (FeedbackItem);
+	// Open to anonymous callers, like the web board - but gRPC has no cookie to hold an
+	// anonymous voter, so an unauthenticated submission casts no vote of its own.
+	rpc SubmitFeedback(SubmitFeedbackRequest) returns (FeedbackItem);
+	rpc EditFeedback(EditFeedbackRequest) returns (FeedbackItem);
+	rpc DeleteFeedback(DeleteFeedbackRequest) returns (DeleteFeedbackResponse);
+	rpc Vote(VoteRequest) returns (FeedbackItem);
+	rpc Unvote(VoteRequest) returns (FeedbackItem);
+}
+
+// The release calendar. Everything that changes one is maintainer-only.
+service ReleaseService {
+	rpc ListReleases(ListReleasesRequest) returns (ListReleasesResponse);
+	rpc GetRelease(ReleaseIdRequest) returns (Release);
+	rpc CreateRelease(CreateReleaseRequest) returns (Release);
+	rpc UpdateRelease(UpdateReleaseRequest) returns (Release);
+	// Closes the merge window: the release goes out and everything in it ships with it.
+	rpc ShipRelease(ReleaseIdRequest) returns (Release);
+	rpc DeleteRelease(ReleaseIdRequest) returns (DeleteReleaseResponse);
+}
+
+message FeedbackItem {
+	string id = 1;
+	// "idea" or "bug".
+	string kind = 2;
+	string title = 3;
+	string body = 4;
+	// "open", "planned", "shipped" or "declined".
+	string status = 5;
+	// Empty when it was filed anonymously, which is the common case.
+	string author_id = 6;
+	string author_name = 7;
+	// Empty until the maintainer aims it at a merge window.
+	string release_id = 8;
+	string maintainer_note = 9;
+	int32 votes = 10;
+	// Per caller: whether *this* caller has voted. Anonymous over gRPC means false.
+	bool viewer_has_voted = 11;
+	// RFC 3339. Timestamps cross the wire as strings to keep this free of
+	// google.protobuf.Timestamp and its extra import.
+	string created_at = 12;
+	string updated_at = 13;
+}
+
+message ListFeedbackRequest {
+	// Unset means 0 in proto3, which the server reads as "use the default".
+	int32 limit = 1;
+	// Empty means "any". Same vocabulary as the fields above.
+	string kind = 2;
+	string status = 3;
+	string release_id = 4;
+	// "top" (default) or "new".
+	string sort = 5;
+}
+
+message ListFeedbackResponse {
+	repeated FeedbackItem items = 1;
+}
+
+message GetFeedbackRequest {
+	string id = 1;
+}
+
+message SubmitFeedbackRequest {
+	string kind = 1;
+	string title = 2;
+	string body = 3;
+	// No author field: authorship comes from the token, not from the caller.
+}
+
+// `optional` gives these real presence tracking, so the server can tell "clear it" apart
+// from "leave it alone" on a partial edit.
+message EditFeedbackRequest {
+	string id = 1;
+	optional string kind = 2;
+	optional string title = 3;
+	optional string body = 4;
+	// The three below are maintainer-only; an ordinary caller gets PERMISSION_DENIED.
+	optional string status = 5;
+	optional string release_id = 6;
+	optional string maintainer_note = 7;
+}
+
+message DeleteFeedbackRequest {
+	string id = 1;
+}
+
+message DeleteFeedbackResponse {
+	string id = 1;
+}
+
+message VoteRequest {
+	string id = 1;
+}
+
+message Release {
+	string id = 1;
+	string version = 2;
+	string name = 3;
+	// "planned", "merge_window" or "released".
+	string status = 4;
+	string notes = 5;
+	// RFC 3339, or empty. An undated plan is a real answer for a side project.
+	string planned_for = 6;
+	string released_at = 7;
+	// How many board items are aimed at this window.
+	int32 item_count = 8;
+	string created_at = 9;
+	string updated_at = 10;
+}
+
+message ListReleasesRequest {
+	int32 limit = 1;
+	string status = 2;
+}
+
+message ListReleasesResponse {
+	repeated Release releases = 1;
+}
+
+message ReleaseIdRequest {
+	string id = 1;
+}
+
+message CreateReleaseRequest {
+	string version = 1;
+	string name = 2;
+	string notes = 3;
+	string status = 4;
+	// RFC 3339, or empty for undated.
+	string planned_for = 5;
+}
+
+message UpdateReleaseRequest {
+	string id = 1;
+	optional string version = 2;
+	optional string name = 3;
+	optional string notes = 4;
+	optional string status = 5;
+	optional string planned_for = 6;
+}
+
+message DeleteReleaseResponse {
+	string id = 1;
+}
