@@ -33,4 +33,9 @@ It is a less enterprise solution and a more communal town hall system with a rel
 - **want managing teams + assignees + permissions tiers or SLAs (NOPE)**
 - **a glorified social media in a corporate environement with profiles (NOPE)**
 - **batch-and-ship rhythm (termite is made for release cycles. if you do not have one, the model we have is just plainly not for you)**
-- **backlog that is long living (termite is also made for projects that may or may not reach feature completeness)**dis
+- **backlog that is long living (termite is also made for projects that may or may not reach feature completeness)**
+
+### Upcoming features:
+- Announcements
+- Configurations for scheduled releases and more
+- Basic word filter that is configurable
