@@ -1,6 +1,6 @@
 {
 	"name": "termite",
-	"version": "1.0.1",
+	"version": "1.1.0",
 	"private": true,
 	"type": "module",
 	"description": "A self-hostable feedback board and release tracker for projects that ship in versions.",
