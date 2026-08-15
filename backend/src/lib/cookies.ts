@@ -25,6 +25,13 @@ const SAME_SITE = env.COOKIE_SAME_SITE === "strict" ? "Strict" : "Lax";
  * read back by the page and echoed in a header, which is why it is built with `cookie`
  * rather than lacewing. It carries no secret the server trusts on its own: only the
  * cookie+header pair together pass.
+ *
+ * It is also the only cookie that takes a Domain, and only when COOKIE_DOMAIN is set.
+ * Being read by script is the whole point of this one, and a host-only cookie is readable
+ * only on the host that set it - so a board on board.example.com talking to an API on
+ * api.example.com cannot see it, sends no header, and has every mutation refused. The
+ * session cookies have no such problem: the browser attaches those itself, and they stay
+ * host-only on purpose. See config/env.ts for what widening this costs.
  */
 function csrfCookie(value: string, maxAgeSeconds: number): string {
 	return stringifySetCookie({
@@ -35,6 +42,10 @@ function csrfCookie(value: string, maxAgeSeconds: number): string {
 		sameSite: env.COOKIE_SAME_SITE,
 		path: "/",
 		maxAge: maxAgeSeconds,
+		// Both the minting and the clearing go through here, which is what keeps them in
+		// step: a Set-Cookie only replaces a cookie it matches on name, domain and path,
+		// so a cleared cookie that dropped the Domain would leave the real one in place.
+		...(env.COOKIE_DOMAIN ? { domain: env.COOKIE_DOMAIN } : {}),
 	});
 }
 

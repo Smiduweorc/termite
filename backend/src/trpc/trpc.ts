@@ -103,7 +103,18 @@ const csrfGuard = t.middleware(({ ctx, type, next }) => {
 	const cookieBorne = ctx.actorSource === "cookie" || ctx.csrf.cookie !== undefined;
 
 	if (type === "mutation" && cookieBorne && !csrfTokensMatch(ctx.csrf.cookie, ctx.csrf.header)) {
-		ctx.log.warn({ event: "csrf.denied" }, "mutation refused: bad or missing CSRF token");
+		// Which half failed, because the three cases have three different causes and the
+		// log is the only place to tell them apart. No token is logged, only its absence:
+		// "header" means the page could not read the cookie (a Domain problem, see
+		// lib/cookies.ts), "cookie" means the browser sent none or sent the name twice
+		// (context.ts refuses an ambiguous name), and "mismatch" means two real values
+		// that disagree - a stale tab, or the forgery this check is here for.
+		const reason = !ctx.csrf.header ? "header" : !ctx.csrf.cookie ? "cookie" : "mismatch";
+
+		ctx.log.warn(
+			{ event: "csrf.denied", missing: reason },
+			"mutation refused: bad or missing CSRF token",
+		);
 
 		throw new TRPCError({ code: "FORBIDDEN", message: "CSRF token missing or invalid" });
 	}
