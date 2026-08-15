@@ -1,0 +1,119 @@
+# A complete Termite deployment from published images. The docker-compose.yml next to
+# this file is the *development* database only - this is the one to copy onto a server.
+#
+#   cp .env.release.example .env
+#   $EDITOR .env                       # JWT_SECRET and the three URLs are required
+#   docker compose -f docker-compose.release.yml up -d
+#
+# The two URLs that trip people up are PUBLIC_APP_URL and PUBLIC_API_URL. Both are
+# resolved by the *browser*, never from inside this network, so neither can be a compose
+# service name. If you are running behind a reverse proxy they are the proxy's addresses.
+#
+# One constraint worth knowing before you pick them: Termite's session cookies are
+# SameSite=Lax with no "none" option, and they are always Secure. So the two URLs must be
+# the same site - board.example.com and api.example.com are fine, and so is one host with
+# two paths, but board.example.com with api.somewhere-else.net will drop the refresh
+# cookie and log people out. Everything except http://localhost must be https.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-termite}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-termite}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    # No ports: here on purpose. The database is reachable from the other services on
+    # this network and from nowhere else. Add a mapping only if you need psql from the
+    # host, and bind it to 127.0.0.1 if you do.
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-termite} -d ${POSTGRES_DB:-termite}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Runs the SQL in backend/drizzle and exits. The backend waits for it to succeed, so a
+  # fresh volume becomes a working schema with no manual step, and an upgrade applies its
+  # migrations before the new code that expects them ever starts.
+  migrate:
+    image: ${IMAGE_NAMESPACE:-smiduweorc}/termite-backend:${TERMITE_VERSION:-latest}
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # DATABASE_URL is all this needs - see backend/src/db/migrate.ts for why it does not
+    # read the rest of the app's configuration.
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-termite}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-termite}
+    command: ["bun", "run", "src/db/migrate.ts"]
+
+  backend:
+    image: ${IMAGE_NAMESPACE:-smiduweorc}/termite-backend:${TERMITE_VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      GRPC_PORT: "50051"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SERVICE_NAME: termite-backend
+
+      DATABASE_URL: postgres://${POSTGRES_USER:-termite}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-termite}
+
+      # The browser origin the API will accept credentialed requests from. This is the
+      # frontend's public address, and getting it wrong shows up as CORS errors in the
+      # console rather than as anything in these logs.
+      CORS_ORIGIN: ${PUBLIC_APP_URL:?set PUBLIC_APP_URL in .env}
+
+      # openssl rand -base64 48. A passphrase will not do: it is entropy-checked at boot
+      # and the app refuses to start on a weak one.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      JWT_ACCESS_EXPIRY: ${JWT_ACCESS_EXPIRY:-15m}
+      # Pinned into every token and checked on the way back, so they have to match this
+      # deployment's own API address.
+      JWT_ISSUER: ${PUBLIC_API_URL:?set PUBLIC_API_URL in .env}
+      JWT_AUDIENCE: ${PUBLIC_API_URL}/trpc
+      REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-7}
+      COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-lax}
+
+      # Where invite and password-reset links point: the board people visit, not the API.
+      APP_URL: ${PUBLIC_APP_URL}
+
+      # Optional. Leave SMTP_HOST empty and invite/reset links are written to
+      # `docker compose logs backend` instead of emailed, which is a reasonable way to
+      # run a small board as long as the log is only yours.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-Termite <termite@localhost>}
+    ports:
+      # REST + tRPC. Put a TLS-terminating proxy in front of this: the cookies are Secure
+      # and will not survive plain http on anything but localhost.
+      - "${BACKEND_PORT:-3000}:3000"
+      # gRPC. Drop this line unless something is actually calling it.
+      - "${GRPC_PORT:-50051}:50051"
+
+  frontend:
+    image: ${IMAGE_NAMESPACE:-smiduweorc}/termite-frontend:${TERMITE_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      # Injected into index.html when this container starts, because Vite bakes its env
+      # at build time and a published image therefore cannot carry a usable one. Changing
+      # it needs `docker compose up -d --force-recreate frontend`, not a restart.
+      API_URL: ${PUBLIC_API_URL}
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    # Deliberately no depends_on: the board should still serve its shell and show an
+    # error if the backend is down, rather than refusing to start alongside it.
+
+volumes:
+  postgres-data:

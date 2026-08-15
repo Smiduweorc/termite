@@ -1,0 +1,232 @@
+name: Release
+
+# Termite ships in versions, so a git tag is the trigger. Tag, push, and the images
+# follow:
+#
+#   npm version 1.1.0 --no-git-tag-version   (or edit package.json by hand)
+#   git commit -am "chore(release): version bump"
+#   git tag v1.1.0 && git push --follow-tags
+#
+# workflow_dispatch re-runs a release for a tag that already exists, for when a push
+# succeeded and the publish failed halfway.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing git tag to build and publish (e.g. v1.1.0)"
+        required: true
+        type: string
+
+env:
+  NAMESPACE: smiduweorc
+
+jobs:
+  # Resolves one version string for every downstream job, so the tag-push and the manual
+  # re-run paths cannot disagree about what is being released.
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      ref: ${{ steps.resolve.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - id: resolve
+        name: Resolve version, and check the tag against package.json
+        run: |
+          ref="${{ inputs.tag || github.ref_name }}"
+          echo "ref=$ref"         >> "$GITHUB_OUTPUT"
+          echo "version=$ref"     >> "$GITHUB_OUTPUT"
+
+          # The images are tagged from the git tag, but `docker exec ... cat package.json`
+          # is what a person checks when they want to know what they are running. If those
+          # two disagree the mismatch is invisible until someone is debugging a live
+          # board, so fail here instead - the fix is a one-line commit, before the tag.
+          pkg=$(jq -r .version package.json)
+          if [ "v$pkg" != "$ref" ]; then
+            echo "::error::tag $ref does not match package.json version $pkg (expected tag v$pkg)"
+            exit 1
+          fi
+
+          echo "releasing $ref"
+
+  # Lint, typecheck, tests, frontend build and the boot smoke test, exactly as a PR runs
+  # them. Nothing is published if this fails.
+  check:
+    needs: setup
+    uses: ./.github/workflows/ci.yml
+
+  # One job per image per architecture, each on a runner of that architecture. GitHub's
+  # arm64 runners are free for public repositories, which is worth the extra plumbing
+  # below: the alternative is QEMU emulation, and the backend's @node-rs/argon2 is a
+  # native addon whose install is exactly the kind of thing emulation makes slow and
+  # occasionally strange.
+  #
+  # Because the two halves of an image run on different machines they cannot share a tag.
+  # Each pushes an untagged blob addressed only by digest, and `merge` stitches the
+  # digests into one manifest list afterwards.
+  build:
+    needs: [setup, check]
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [backend, frontend]
+        platform: [linux/amd64, linux/arm64]
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.ref }}
+
+      - name: Prepare
+        run: |
+          platform="${{ matrix.platform }}"
+          # linux/amd64 -> linux-amd64. Artifact names cannot contain a slash.
+          echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
+          echo "IMAGE=${{ env.NAMESPACE }}/termite-${{ matrix.image }}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Labels only. The tags are applied to the manifest list in `merge`, never to these
+      # per-architecture blobs.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          # Both Dockerfiles read from the repo root: the frontend needs backend/ present
+          # to type-check against AppRouter, and the backend needs the root bun.lock.
+          context: .
+          file: ${{ matrix.image }}/Dockerfile
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          # Scoped per image and per architecture, or the four jobs overwrite each
+          # other's cache and every release is a cold build.
+          cache-from: type=gha,scope=${{ matrix.image }}-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}-${{ env.PLATFORM_PAIR }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          # The filename is the digest; the file itself is empty. `merge` only needs the
+          # names, and this is the shape download-artifact reassembles most cleanly.
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.image }}-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Turns the per-architecture digests into one multi-arch tag, so `docker pull` picks
+  # the right binary automatically.
+  merge:
+    needs: [setup, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [backend, frontend]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ matrix.image }}-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # `value=` rather than letting the action read the git ref: on a workflow_dispatch
+      # re-run the ref is a branch, and semver parsing of "master" produces nothing.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.NAMESPACE }}/termite-${{ matrix.image }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.setup.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.setup.outputs.version }}
+            type=semver,pattern={{major}},value=${{ needs.setup.outputs.version }}
+            type=raw,value=latest,enable=${{ !contains(needs.setup.outputs.version, '-') }}
+
+      # A prerelease tag (v1.1.0-rc.1) contains a hyphen, so the `enable` above keeps it
+      # off `latest`. It still publishes under its own exact version.
+      - name: Create and push the manifest list
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.NAMESPACE }}/termite-${{ matrix.image }}@sha256:%s ' *)
+
+      - name: Inspect
+        run: |
+          docker buildx imagetools inspect \
+            "${{ env.NAMESPACE }}/termite-${{ matrix.image }}:${{ steps.meta.outputs.version }}"
+
+  # The tag exists on GitHub either way; this gives it a page that says what to pull.
+  github-release:
+    needs: [setup, merge]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.ref }}
+          fetch-depth: 0
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.setup.outputs.version }}
+        run: |
+          notes=$(mktemp)
+          {
+            echo "## Images"
+            echo
+            echo '```'
+            echo "docker pull ${{ env.NAMESPACE }}/termite-backend:${VERSION#v}"
+            echo "docker pull ${{ env.NAMESPACE }}/termite-frontend:${VERSION#v}"
+            echo '```'
+            echo
+            echo "linux/amd64 and linux/arm64. See docker-compose.release.yml for a full stack."
+          } > "$notes"
+
+          # --generate-notes writes the commit log above this; the file is appended to it.
+          flags=""
+          case "$VERSION" in *-*) flags="--prerelease";; esac
+
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release edit "$VERSION" --notes-file "$notes"
+          else
+            gh release create "$VERSION" --title "$VERSION" --generate-notes \
+              --notes-file "$notes" $flags
+          fi

@@ -35,6 +35,73 @@ It is a less enterprise solution and a more communal town hall system with a rel
 - **batch-and-ship rhythm (termite is made for release cycles. if you do not have one, the model we have is just plainly not for you)**
 - **backlog that is long living (termite is also made for projects that may or may not reach feature completeness)**
 
+## Self-hosting
+
+Termite publishes two images per release, both `linux/amd64` and `linux/arm64`:
+
+| Image | What it is |
+| --- | --- |
+| `smiduweorc/termite-backend` | Elysia (REST + tRPC) on 3000, gRPC on 50051 |
+| `smiduweorc/termite-frontend` | The Vue board, built and served by nginx on 80 |
+
+```sh
+curl -O https://raw.githubusercontent.com/Smiduweorc/termite/master/docker-compose.release.yml
+curl -o .env https://raw.githubusercontent.com/Smiduweorc/termite/master/.env.release.example
+
+# JWT_SECRET, POSTGRES_PASSWORD, and the two public URLs are required.
+openssl rand -base64 48   # -> JWT_SECRET
+$EDITOR .env
+
+docker compose -f docker-compose.release.yml up -d
+docker compose -f docker-compose.release.yml exec backend bun run admin:create
+```
+
+The `migrate` service applies the schema before the backend starts, so a fresh volume
+and an upgrade both work without a manual step.
+
+### The two URLs
+
+`PUBLIC_APP_URL` and `PUBLIC_API_URL` are the only settings that need real thought. Both
+are resolved by the **browser**, so neither can be a compose service name.
+
+They must also be the **same site**. Termite's session cookies are `SameSite=Lax` with no
+`none` option, and always `Secure`:
+
+- `board.example.com` + `api.example.com`: fine.
+- one proxy serving `/` and `/trpc` from one host: fine, and simplest.
+- `board.example.com` + `api.somewhere-else.net`: the refresh cookie is dropped and
+  people are logged out. There is no setting that fixes this; use a subdomain.
+
+Anything other than `http://localhost` has to be https, because the cookies are `Secure`.
+
+### Configuring the frontend image
+
+Vite inlines `import.meta.env` at build time, so a prebuilt image cannot carry a useful
+`VITE_API_URL`. The frontend image instead rewrites a placeholder in `index.html` from
+`$API_URL` when the container starts. That means `API_URL` is read at **create** time, not
+on restart:
+
+```sh
+docker compose -f docker-compose.release.yml up -d --force-recreate frontend
+```
+
+### Cutting a release
+
+Tags drive it. `.github/workflows/release.yml` runs the full CI suite, builds all four
+image/architecture combinations on native runners, merges them into multi-arch tags, and
+opens a GitHub release:
+
+```sh
+# package.json version and the tag must match - the workflow checks and fails if not.
+git commit -am "chore(release): version bump"
+git tag v1.1.0 && git push --follow-tags
+```
+
+Images publish as `1.1.0`, `1.1`, `1`, and `latest`. A prerelease tag (`v1.1.0-rc.1`)
+publishes under its exact version only and never moves `latest`.
+
+Requires two repository secrets: `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
+
 ## Extra Lore
 
 ### Upcoming features:

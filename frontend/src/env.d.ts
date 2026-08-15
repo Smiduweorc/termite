@@ -13,3 +13,12 @@ interface ImportMetaEnv {
 interface ImportMeta {
 	readonly env: ImportMetaEnv;
 }
+
+/**
+ * Written into index.html at container start by frontend/docker-entrypoint.sh, which is
+ * how a prebuilt image learns its backend's address. Every field is optional: under
+ * `vite dev` nothing rewrites the placeholder, and outside Docker nothing sets it at all.
+ */
+interface Window {
+	__TERMITE__?: { apiUrl?: string };
+}
