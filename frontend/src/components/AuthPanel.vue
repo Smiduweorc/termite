@@ -77,11 +77,6 @@ async function submit() {
 
 		<p v-if="error" class="error" role="alert">{{ error }}</p>
 		<p v-if="notice" class="notice" role="status">{{ notice }}</p>
-
-		<p class="hint">
-			Accounts are for maintaining the board - nobody needs one to file or vote. A
-			maintainer creates them; there is no sign-up.
-		</p>
 	</section>
 </template>
 

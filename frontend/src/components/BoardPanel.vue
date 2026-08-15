@@ -135,7 +135,7 @@ const assign = (item: Item, releaseId: string) =>
 
 const decline = (item: Item) =>
 	run(async () => {
-		const note = window.prompt("Why? This is shown on the board.");
+		const note = window.prompt("Why? Shown on the board.");
 
 		if (note === null) return;
 
@@ -191,8 +191,8 @@ onMounted(async () => {
 				</button>
 			</div>
 
-			<input v-model="title" placeholder="One line: what is it?" required maxlength="200" />
-			<textarea v-model="body" placeholder="The details" required rows="3" />
+			<input v-model="title" placeholder="Title" required maxlength="200" />
+			<textarea v-model="body" placeholder="Details" required rows="3" />
 
 			<div class="composer-footer">
 				<input
@@ -201,14 +201,12 @@ onMounted(async () => {
 					placeholder="Your name (optional)"
 					maxlength="80"
 				/>
-				<span v-else class="hint">Filing as {{ filingAs }}.</span>
+				<span v-else class="hint">Filing as {{ filingAs }}</span>
 
 				<button type="submit" class="primary" :disabled="busy">Post to the board</button>
 			</div>
 
-			<p class="hint">
-				No account needed. Filing counts as your vote, and you can take it back.
-			</p>
+			<p class="hint">No account needed. Posting counts as your vote.</p>
 		</form>
 
 		<div class="filters">
@@ -234,9 +232,7 @@ onMounted(async () => {
 
 		<p v-if="error" class="error" role="alert">{{ error }}</p>
 
-		<p v-if="!items.length && !busy" class="empty">
-			Nothing here yet. Run <code>bun run db:seed</code>, or say the first thing.
-		</p>
+		<p v-if="!items.length && !busy" class="empty">No ideas or bugs yet.</p>
 
 		<ul class="items">
 			<li v-for="item in items" :key="item.id" class="panel">
@@ -251,7 +247,7 @@ onMounted(async () => {
 					:class="{ voted: item.viewerHasVoted }"
 					:disabled="busy"
 					:aria-pressed="item.viewerHasVoted"
-					:aria-label="`${item.votes} ${item.votes === 1 ? 'vote' : 'votes'}, ${item.viewerHasVoted ? 'including yours' : 'not including yours'}`"
+					:aria-label="`${item.votes} ${item.votes === 1 ? 'vote' : 'votes'}`"
 					@click="toggleVote(item)"
 				>
 					<svg viewBox="0 0 22 12" class="wedge" aria-hidden="true">

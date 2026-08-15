@@ -43,7 +43,6 @@ describe("AuthPanel", () => {
 		// Sign in, or ask for a link back in. An account cannot be created from here by
 		// anyone, which is the whole change.
 		expect(tabs).toEqual(["Sign in", "Forgot password"]);
-		expect(wrapper.text()).toContain("there is no sign-up");
 	});
 
 	it("asks for a reset link, and says nothing about whether the account exists", async () => {

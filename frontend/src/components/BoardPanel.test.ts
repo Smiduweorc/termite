@@ -97,7 +97,7 @@ describe("BoardPanel", () => {
 		await flushPromises();
 
 		await wrapper.findAll(".kinds button")[1]?.trigger("click");
-		await wrapper.find('input[placeholder="One line: what is it?"]').setValue("Dark mode");
+		await wrapper.find('input[placeholder="Title"]').setValue("Dark mode");
 		await wrapper.find("textarea").setValue("Follow the system theme");
 		await wrapper.find('input[placeholder="Your name (optional)"]').setValue("wren");
 		await wrapper.find("form").trigger("submit");

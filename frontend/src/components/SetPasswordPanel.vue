@@ -19,7 +19,7 @@ const busy = ref(false);
 
 async function submit() {
 	if (password.value !== confirmation.value) {
-		error.value = "Those two do not match";
+		error.value = "Passwords do not match";
 
 		return;
 	}
@@ -59,7 +59,7 @@ async function submit() {
 			<input
 				v-model="confirmation"
 				type="password"
-				placeholder="Again, to be sure"
+				placeholder="Confirm password"
 				required
 				minlength="8"
 				autocomplete="new-password"
@@ -73,7 +73,7 @@ async function submit() {
 
 		<p v-if="error" class="error" role="alert">{{ error }}</p>
 
-		<p class="hint">The link works once. If it has expired, ask for another one.</p>
+		<p class="hint">This link works once.</p>
 	</section>
 </template>
 

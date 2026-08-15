@@ -402,7 +402,7 @@ describe("BoardsPanel", () => {
 
 		expect(saveAsTemplate).toHaveBeenCalledWith({ id: BOARD });
 		expect(wrapper.find('[role="status"]').text()).toContain(
-			'Kept "0.2 merge window" as a template',
+			'Saved "0.2 merge window" as a template',
 		);
 		// The board being worked on is still the one on screen; only the shelf changed.
 		expect(wrapper.find(".kanban").exists()).toBe(true);

@@ -139,7 +139,7 @@ const saveAsTemplate = () =>
 		const saved = await trpc.board.saveAsTemplate.mutate({ id: board.value.id });
 
 		boards.value = await trpc.board.list.query();
-		notice.value = `Kept "${saved.title}" as a template.`;
+		notice.value = `Saved "${saved.title}" as a template.`;
 	});
 
 /**
@@ -380,7 +380,7 @@ onMounted(loadBoards);
 						:ref="captureNameField"
 						v-model="startTitle"
 						:placeholder="summary.title"
-						:aria-label="`Name for the board started from ${summary.title}`"
+						aria-label="Board name"
 						maxlength="120"
 						@keydown.esc="cancelStart"
 					/>
@@ -441,19 +441,13 @@ onMounted(loadBoards);
 		<p v-if="error" class="error" role="alert">{{ error }}</p>
 		<p v-if="notice" class="notice" role="status">{{ notice }}</p>
 
-		<p v-if="!boards.length && !busy" class="empty">
-			No boards yet.
-			<span v-if="!isMaintainer">The maintainer has not published one.</span>
-		</p>
+		<p v-if="!boards.length && !busy" class="empty">No boards yet.</p>
 
 		<template v-if="board">
 			<p v-if="board.description" class="description">{{ board.description }}</p>
 
-			<!-- The hollow columns below already say this is a template; the one thing
-			     the shape cannot say is which way the editing runs. -->
 			<p v-if="board.isTemplate" class="hint">
-				Editing a template changes what new boards start with, never a board that
-				has already started from it.
+				Editing a template only affects boards started from it later.
 			</p>
 
 			<!-- Kanban: as many columns as the board has, in the order it puts them.
@@ -475,24 +469,14 @@ onMounted(loadBoards);
 						</span>
 
 						<div v-if="isMaintainer" class="column-actions">
-							<button
-								type="button"
-								class="quiet"
-								:title="
-									column.isDone
-										? 'Stop treating this as done'
-										: 'Treat this as done'
-								"
-								@click="toggleDoneColumn(column)"
-							>
+							<button type="button" class="quiet" @click="toggleDoneColumn(column)">
 								{{ column.isDone ? "✓ done column" : "mark done" }}
 							</button>
 							<button
 								type="button"
 								class="quiet"
 								:disabled="busy"
-								:aria-label="`Copy the column ${column.title} and its cards`"
-								title="Copy this column and its cards"
+								:aria-label="`Copy column ${column.title}`"
 								@click="duplicateColumn(column)"
 							>
 								copy
@@ -549,7 +533,6 @@ onMounted(loadBoards);
 									class="quiet"
 									:disabled="busy"
 									:aria-label="`Copy the card ${card.title}`"
-									title="Copy this card, under this one"
 									@click="duplicateCard(card)"
 								>
 									copy
@@ -617,7 +600,6 @@ onMounted(loadBoards);
 							class="quiet"
 							:disabled="busy"
 							:aria-label="`Copy the card ${task.title}`"
-							title="Copy this card, under this one"
 							@click="duplicateCard(task)"
 						>
 							copy
@@ -629,8 +611,7 @@ onMounted(loadBoards);
 			</ul>
 
 			<p v-if="isMaintainer && !doneColumn" class="hint">
-				No column is marked as done on this board, which is fine - the checkbox is
-				enough. Mark one and the two stay in step.
+				No column is marked as done on this board.
 			</p>
 		</template>
 	</section>

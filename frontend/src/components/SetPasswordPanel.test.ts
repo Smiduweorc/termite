@@ -42,7 +42,7 @@ describe("SetPasswordPanel", () => {
 
 		// The link works once, so a mismatch has to be caught here rather than burned.
 		expect(setPassword).not.toHaveBeenCalled();
-		expect(wrapper.find('[role="alert"]').text()).toBe("Those two do not match");
+		expect(wrapper.find('[role="alert"]').text()).toBe("Passwords do not match");
 	});
 
 	it("shows what the server said about a dead link", async () => {

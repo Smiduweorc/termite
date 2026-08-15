@@ -113,7 +113,7 @@ onMounted(load);
 		<form v-if="isMaintainer" class="composer panel" @submit.prevent="create">
 			<input
 				v-model="version"
-				placeholder="Version (0.4, 2026.1, ...)"
+				placeholder="Version"
 				required
 				maxlength="40"
 				class="version-input"
@@ -125,9 +125,7 @@ onMounted(load);
 
 		<p v-if="error" class="error" role="alert">{{ error }}</p>
 
-		<p v-if="!releases.length && !busy" class="empty">
-			No releases planned. This project ships when it ships.
-		</p>
+		<p v-if="!releases.length && !busy" class="empty">No releases planned.</p>
 
 		<ol class="releases">
 			<li v-for="release in releases" :key="release.id" class="panel" :class="release.status">

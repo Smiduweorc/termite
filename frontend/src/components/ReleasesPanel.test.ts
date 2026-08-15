@@ -92,7 +92,7 @@ describe("ReleasesPanel", () => {
 		const wrapper = mount(ReleasesPanel);
 		await flushPromises();
 
-		await wrapper.find('input[placeholder="Version (0.4, 2026.1, ...)"]').setValue("0.3");
+		await wrapper.find('input[placeholder="Version"]').setValue("0.3");
 		await wrapper.find("form").trigger("submit");
 		await flushPromises();
 

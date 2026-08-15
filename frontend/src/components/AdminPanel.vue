@@ -64,7 +64,7 @@ const create = () =>
 const resendInvite = (target: ManagedUser) =>
 	run(async () => {
 		await trpc.user.resendInvite.mutate({ userId: target.id });
-		notice.value = `A fresh link is on its way to ${target.email}. The old one is dead.`;
+		notice.value = `New link sent to ${target.email}. The old one no longer works.`;
 	});
 
 const setRole = (target: ManagedUser, role: "user" | "admin") =>
@@ -86,10 +86,7 @@ onMounted(load);
 
 <template>
 	<section class="admin panel">
-		<div class="heading">
-			<h2 class="section-title">Users</h2>
-			<span class="only">yours alone</span>
-		</div>
+		<h2 class="section-title">Users</h2>
 
 		<form class="invite" @submit.prevent="create">
 			<input v-model="newEmail" type="email" placeholder="Email" required />
@@ -101,10 +98,7 @@ onMounted(load);
 			<button type="submit" class="primary" :disabled="busy">Send invite</button>
 		</form>
 
-		<p class="hint">
-			No sign-up exists. Creating an account emails a one-time link; the password is
-			chosen by whoever receives it.
-		</p>
+		<p class="hint">Creating an account emails a one-time link to set a password.</p>
 
 		<p v-if="error" class="error" role="alert">{{ error }}</p>
 		<p v-if="notice" class="notice" role="status">{{ notice }}</p>
@@ -161,17 +155,6 @@ onMounted(load);
 	display: grid;
 	gap: 1rem;
 	padding: 1.5rem;
-}
-
-.heading {
-	display: flex;
-	align-items: baseline;
-	gap: 0.6rem;
-}
-
-.only {
-	color: var(--muted);
-	font-size: 0.82rem;
 }
 
 ul {
