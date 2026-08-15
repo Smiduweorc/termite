@@ -82,6 +82,9 @@ services:
       JWT_AUDIENCE: ${PUBLIC_API_URL}/trpc
       REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-7}
       COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-lax}
+      # Required when the board and the API are on different hostnames, and otherwise
+      # best left empty. See the note in .env.release.example.
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
 
       # Where invite and password-reset links point: the board people visit, not the API.
       APP_URL: ${PUBLIC_APP_URL}

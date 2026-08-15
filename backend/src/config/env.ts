@@ -31,6 +31,27 @@ const Env = type({
 	// option - cross-site token cookies are how CSRF happens.
 	COOKIE_SAME_SITE: "'lax' | 'strict'",
 
+	/**
+	 * The Domain to put on the CSRF cookie, and only on that one. Empty means host-only,
+	 * which is the default and the right answer when the board and the API share a host.
+	 *
+	 * It exists because the CSRF cookie is the one cookie the *page* has to read (see
+	 * lib/csrf.ts): a host-only cookie set by api.example.com is invisible to script on
+	 * board.example.com, so the page cannot echo the header and every mutation is refused.
+	 * Widening that one cookie to the parent domain is what makes a split deployment work.
+	 *
+	 * The cost is real and worth stating: any subdomain of this value can then read *and
+	 * write* the token, so a hostile or compromised one can plant a value it knows and
+	 * echo it back, which is exactly the double-submit bypass context.ts refuses to guess
+	 * its way into. Set this only across hosts you control, and leave it empty otherwise.
+	 * The session cookies are deliberately not widened - they stay host-only.
+	 */
+	COOKIE_DOMAIN: type("string == 0").or(
+		// Lowercase LDH labels, at least two of them: a single label ("localhost") is not
+		// a domain a browser will scope a cookie to, and no dot means no sharing to do.
+		type(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/),
+	),
+
 	// Where the board is served to people, which is what an invite or reset link has to
 	// point at. It is the frontend's origin, not the API's.
 	APP_URL: "string > 0",
@@ -66,6 +87,9 @@ const result = Env({
 	JWT_AUDIENCE: process.env.JWT_AUDIENCE ?? "http://localhost:3000/trpc",
 	REFRESH_TOKEN_TTL_DAYS: Number(process.env.REFRESH_TOKEN_TTL_DAYS ?? 7),
 	COOKIE_SAME_SITE: process.env.COOKIE_SAME_SITE ?? "lax",
+	// A leading dot is how this was written for years and browsers still strip it, so it
+	// is accepted and normalised rather than rejected on a technicality.
+	COOKIE_DOMAIN: (process.env.COOKIE_DOMAIN ?? "").trim().toLowerCase().replace(/^\./, ""),
 	APP_URL: process.env.APP_URL ?? "http://localhost:5173",
 	SMTP_HOST: process.env.SMTP_HOST ?? "",
 	SMTP_PORT: Number(process.env.SMTP_PORT ?? 587),

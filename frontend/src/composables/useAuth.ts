@@ -39,9 +39,28 @@ export function useAuth() {
 	// There is no register(): accounts are created by a maintainer and activated with an
 	// emailed link, so the only way a session starts here is login().
 
+	/**
+	 * The local half happens in `finally`, on purpose.
+	 *
+	 * Revoking the refresh token is the server's job and it can fail - the network is
+	 * down, the session had already lapsed, the mutation is refused. None of that is a
+	 * reason to leave someone looking signed in after they asked not to be: the button
+	 * would appear to do nothing at all, since the rejection is thrown into a click
+	 * handler nobody is watching. Clearing here means sign-out always visibly happens,
+	 * and the worst case is a refresh token that outlives the session it belonged to -
+	 * which is what its expiry is for.
+	 */
 	async function logout(): Promise<void> {
-		await trpc.auth.logout.mutate();
-		user.value = null;
+		try {
+			await trpc.auth.logout.mutate();
+		} catch {
+			// Swallowed rather than rethrown: the only caller is a click handler on the
+			// masthead, so a rejection here has nowhere to go but an unhandled promise -
+			// and the `finally` below is the answer the person actually asked for. The
+			// server logs its own reason for refusing, against the request id.
+		} finally {
+			user.value = null;
+		}
 	}
 
 	return {
