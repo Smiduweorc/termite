@@ -5,10 +5,11 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-# Environment - .env.example is committed, every other .env is not
+# Environment - the committed examples are documentation, every real .env is not
 .env
 .env.*
 !.env.example
+!.env.release.example
 
 # Logs
 *.log

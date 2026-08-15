@@ -4,6 +4,9 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  # release.yml calls this workflow before it builds anything, so a tag can never
+  # publish an image from a tree that does not lint, typecheck, test and boot.
+  workflow_call:
 
 jobs:
   check:

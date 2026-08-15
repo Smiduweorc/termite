@@ -10,6 +10,17 @@
 	</head>
 	<body>
 		<div id="app"></div>
+		<!--
+			Runtime configuration, read by src/lib/trpc.ts. The value is a placeholder that
+			the Docker image's entrypoint rewrites on container start; `vite dev` and a
+			plain `vite build` leave it exactly as it is, and trpc.ts recognises the
+			unsubstituted form and falls back. Inline and synchronous on purpose - fetching
+			a config.json instead would make client construction async and drag that
+			awaitness through every consumer.
+		-->
+		<script>
+			window.__TERMITE__ = { apiUrl: "__TERMITE_API_URL__" };
+		</script>
 		<script type="module" src="/src/main.ts"></script>
 	</body>
 </html>
