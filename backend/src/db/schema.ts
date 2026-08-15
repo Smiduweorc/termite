@@ -226,12 +226,18 @@ export const passwordTokens = pgTable(
  * The board is where "we should do this" turns into "I am doing this". It is private by
  * default and can be published read-only, because some projects want to show what they
  * are working on and some would rather not promise anything.
+ *
+ * `isTemplate` is the whole of the template feature, and deliberately so. A template is
+ * not a second kind of object with its own table and its own half of every procedure -
+ * it is a board that is kept to be copied rather than worked on. Everything that edits a
+ * board edits a template, and starting from one is the same copy that duplicates a board.
  */
 export const boards = pgTable("boards", {
 	id: uuid("id").primaryKey().defaultRandom(),
 	title: text("title").notNull(),
 	description: text("description"),
 	isPublic: boolean("is_public").notNull().default(false),
+	isTemplate: boolean("is_template").notNull().default(false),
 	createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 	updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -22,6 +22,13 @@
       "when": 1786258710042,
       "tag": "0002_canonical_email",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786375388176,
+      "tag": "0003_templates",
+      "breakpoints": true
     }
   ]
 }

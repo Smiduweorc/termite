@@ -273,6 +273,57 @@ await db.insert(tasks).values([
 	},
 ]);
 
+/**
+ * A template: the same shape as any other board, kept aside to be copied.
+ *
+ * Every release needs the same handful of chores done in the same order, and typing them
+ * out again each time is how they stop being tracked at all. Start a board from this one
+ * and you get these columns and these cards; this one stays where it is.
+ */
+const [template] = await db
+	.insert(boards)
+	.values({
+		title: "Release checklist",
+		description: "The chores every version needs. Start a board from this one.",
+		isTemplate: true,
+	})
+	.returning();
+
+if (!template) {
+	throw new Error("Seed failed: template board was not inserted");
+}
+
+const [beforeTagging, afterTagging] = await db
+	.insert(buckets)
+	.values(
+		[{ title: "Before tagging", isDefault: true }, { title: "After tagging" }].map(
+			(column, index) => ({
+				...column,
+				boardId: template.id,
+				position: (index + 1) * POSITION_STEP,
+			}),
+		),
+	)
+	.returning();
+
+if (!beforeTagging || !afterTagging) {
+	throw new Error("Seed failed: template buckets were not inserted");
+}
+
+await db.insert(tasks).values(
+	[
+		{ bucketId: beforeTagging.id, title: "Close the merge window" },
+		{ bucketId: beforeTagging.id, title: "Write the release notes" },
+		{ bucketId: beforeTagging.id, title: "Run the test suite on a clean checkout" },
+		{ bucketId: afterTagging.id, title: "Ship the release, items and all" },
+		{ bucketId: afterTagging.id, title: "Say so on the board" },
+	].map((card, index) => ({
+		...card,
+		boardId: template.id,
+		position: (index + 1) * POSITION_STEP,
+	})),
+);
+
 // pino's signature is (fields, message) - the object comes first.
 logger.info(
 	{
@@ -281,6 +332,7 @@ logger.info(
 		releases: 3,
 		feedback: items.length,
 		board: board.title,
+		template: template.title,
 	},
 	"seeded",
 );

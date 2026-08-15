@@ -13,9 +13,15 @@ const addTask = vi.fn();
 const updateTask = vi.fn();
 const moveTask = vi.fn();
 const deleteTask = vi.fn();
+const duplicateBoard = vi.fn();
+const saveAsTemplate = vi.fn();
+const useTemplate = vi.fn();
+const duplicateBucket = vi.fn();
+const duplicateTask = vi.fn();
 
 const AT = "2026-01-01T00:00:00.000Z";
 const BOARD = "44444444-4444-4444-8444-444444444444";
+const TEMPLATE = "55555555-5555-4555-8555-555555555555";
 
 const currentUser = { value: null as CurrentUser | null };
 
@@ -36,6 +42,11 @@ vi.mock("../lib/trpc", () => ({
 			updateTask: { mutate: (...args: unknown[]) => updateTask(...args) },
 			moveTask: { mutate: (...args: unknown[]) => moveTask(...args) },
 			deleteTask: { mutate: (...args: unknown[]) => deleteTask(...args) },
+			duplicate: { mutate: (...args: unknown[]) => duplicateBoard(...args) },
+			saveAsTemplate: { mutate: (...args: unknown[]) => saveAsTemplate(...args) },
+			useTemplate: { mutate: (...args: unknown[]) => useTemplate(...args) },
+			duplicateBucket: { mutate: (...args: unknown[]) => duplicateBucket(...args) },
+			duplicateTask: { mutate: (...args: unknown[]) => duplicateTask(...args) },
 		},
 	},
 }));
@@ -81,6 +92,7 @@ function board(overrides: Record<string, unknown> = {}) {
 		title: "0.2 merge window",
 		description: null,
 		isPublic: true,
+		isTemplate: false,
 		createdAt: AT,
 		updatedAt: AT,
 		buckets: [
@@ -111,7 +123,9 @@ describe("BoardsPanel", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		currentUser.value = null;
-		listBoards.mockResolvedValue([{ id: BOARD, title: "0.2 merge window", isPublic: true }]);
+		listBoards.mockResolvedValue([
+			{ id: BOARD, title: "0.2 merge window", isPublic: true, isTemplate: false },
+		]);
 		byId.mockResolvedValue(board());
 	});
 
@@ -254,6 +268,144 @@ describe("BoardsPanel", () => {
 		// rather than inventing an order of its own.
 		expect(rows[0]).toContain("To do");
 		expect(rows[1]).toContain("In the branch");
+	});
+
+	it("copies a card without saying where it goes", async () => {
+		currentUser.value = maintainer();
+		duplicateTask.mockResolvedValue(board());
+
+		const wrapper = mount(BoardsPanel);
+		await flushPromises();
+
+		const copy = wrapper
+			.findAll(".card-actions button")
+			.find((button) => button.text() === "copy");
+
+		await copy?.trigger("click");
+		await flushPromises();
+
+		// Where the copy lands is the server's business - under the card it came from.
+		expect(duplicateTask).toHaveBeenCalledWith({ id: "task-1" });
+	});
+
+	it("copies a column, cards and all", async () => {
+		currentUser.value = maintainer();
+		duplicateBucket.mockResolvedValue(board());
+
+		const wrapper = mount(BoardsPanel);
+		await flushPromises();
+
+		const copy = wrapper
+			.findAll(".column-actions button")
+			.find((button) => button.text() === "copy");
+
+		await copy?.trigger("click");
+		await flushPromises();
+
+		expect(duplicateBucket).toHaveBeenCalledWith({ id: "col-1" });
+	});
+
+	it("offers a visitor nothing to copy, and no shelf of the maintainer's shapes", async () => {
+		listBoards.mockResolvedValue([
+			{ id: BOARD, title: "0.2 merge window", isPublic: true, isTemplate: false },
+			{ id: TEMPLATE, title: "Release checklist", isPublic: true, isTemplate: true },
+		]);
+
+		const wrapper = mount(BoardsPanel);
+		await flushPromises();
+
+		expect(wrapper.find(".board-actions").exists()).toBe(false);
+		expect(wrapper.findAll("button").some((button) => button.text() === "copy")).toBe(false);
+		// Templates are scaffolding for the person who builds boards, not for the person
+		// who reads them - so a visitor is not shown the shelf at all.
+		expect(wrapper.find(".shelf").exists()).toBe(false);
+		expect(wrapper.text()).not.toContain("Release checklist");
+	});
+
+	it("keeps templates off the board picker and names the board it starts", async () => {
+		currentUser.value = maintainer();
+		listBoards.mockResolvedValue([
+			{ id: BOARD, title: "0.2 merge window", isPublic: true, isTemplate: false },
+			{ id: TEMPLATE, title: "Release checklist", isPublic: false, isTemplate: true },
+		]);
+		useTemplate.mockResolvedValue(board({ title: "0.3 merge window" }));
+
+		const wrapper = mount(BoardsPanel);
+		await flushPromises();
+
+		// A template is not a board you work on, so it is not among them.
+		expect(wrapper.findAll(".picker button").map((button) => button.text())).toEqual([
+			"0.2 merge window",
+		]);
+		expect(wrapper.find(".shelf").text()).toContain("Release checklist");
+
+		const start = wrapper
+			.findAll(".template button")
+			.find((button) => button.text() === "start a board");
+
+		await start?.trigger("click");
+		await flushPromises();
+
+		// The name is asked for in the page, in this app's own field. There is no
+		// window.prompt to stub, which is the point.
+		const field = wrapper.find(".naming input");
+
+		expect(field.exists()).toBe(true);
+
+		await field.setValue("0.3 merge window");
+		await wrapper.find(".naming").trigger("submit");
+		await flushPromises();
+
+		expect(useTemplate).toHaveBeenCalledWith({ id: TEMPLATE, title: "0.3 merge window" });
+		// The field has done its job and stands down.
+		expect(wrapper.find(".naming").exists()).toBe(false);
+	});
+
+	it("lets an unnamed board keep the title of the template it came from", async () => {
+		currentUser.value = maintainer();
+		listBoards.mockResolvedValue([
+			{ id: BOARD, title: "0.2 merge window", isPublic: true, isTemplate: false },
+			{ id: TEMPLATE, title: "Release checklist", isPublic: false, isTemplate: true },
+		]);
+		useTemplate.mockResolvedValue(board({ title: "Release checklist" }));
+
+		const wrapper = mount(BoardsPanel);
+		await flushPromises();
+
+		const start = wrapper
+			.findAll(".template button")
+			.find((button) => button.text() === "start a board");
+
+		await start?.trigger("click");
+		await flushPromises();
+
+		await wrapper.find(".naming").trigger("submit");
+		await flushPromises();
+
+		// Blank is not an error - the server keeps the template's own name.
+		expect(useTemplate).toHaveBeenCalledWith({ id: TEMPLATE });
+	});
+
+	it("saves the open board as a template and leaves it open", async () => {
+		currentUser.value = maintainer();
+		saveAsTemplate.mockResolvedValue(board({ isTemplate: true }));
+
+		const wrapper = mount(BoardsPanel);
+		await flushPromises();
+
+		const save = wrapper
+			.findAll(".board-actions button")
+			.find((button) => button.text() === "Save as template");
+
+		await save?.trigger("click");
+		await flushPromises();
+
+		expect(saveAsTemplate).toHaveBeenCalledWith({ id: BOARD });
+		expect(wrapper.find('[role="status"]').text()).toContain(
+			'Kept "0.2 merge window" as a template',
+		);
+		// The board being worked on is still the one on screen; only the shelf changed.
+		expect(wrapper.find(".kanban").exists()).toBe(true);
 	});
 
 	it("surfaces a refused move instead of pretending it worked", async () => {
