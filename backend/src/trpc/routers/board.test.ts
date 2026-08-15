@@ -373,6 +373,321 @@ describe("task boards", () => {
 		});
 	});
 
+	describe("copying a card", () => {
+		it("puts the copy directly under the card it came from", async () => {
+			let board = await admin().board.create({ title: "0.4" });
+
+			for (const title of ["first", "second"]) {
+				board = await admin().board.addTask({ boardId: board.id, title });
+			}
+
+			const copied = await admin().board.duplicateTask({ id: taskId(board, "first") });
+
+			// Under the original, not at the bottom of the column - on a long column the
+			// bottom is offscreen, and the card you just made is the one you want to see.
+			expect(cardsIn(copied, "To do")).toEqual(["first", "first (copy)", "second"]);
+		});
+
+		it("brings the description and the links across", async () => {
+			const visitor = callerAs(db, null);
+			const item = await visitor.feedback.submit({ kind: "idea", title: "RSS", body: "x" });
+
+			const board = await admin().board.create({ title: "0.4" });
+			const withTask = await admin().board.addTask({
+				boardId: board.id,
+				title: "Add an RSS feed",
+				description: "One entry per release.",
+				feedbackId: item.id,
+			});
+
+			const copied = await admin().board.duplicateTask({
+				id: taskId(withTask, "Add an RSS feed"),
+			});
+
+			const copy = copied.buckets[0]?.tasks.find((task) => task.title.endsWith("(copy)"));
+
+			expect(copy?.description).toBe("One entry per release.");
+			// A copy of "add an RSS feed" is still about the request that asked for it.
+			expect(copy?.feedbackId).toBe(item.id);
+		});
+
+		it("takes the name it is given instead of inventing one", async () => {
+			const board = await admin().board.create({ title: "0.4" });
+			const withTask = await admin().board.addTask({ boardId: board.id, title: "Tag it" });
+
+			const copied = await admin().board.duplicateTask({
+				id: taskId(withTask, "Tag it"),
+				title: "Tag 0.5",
+			});
+
+			expect(cardsIn(copied, "To do")).toEqual(["Tag it", "Tag 0.5"]);
+		});
+
+		it("counts against a WIP limit like any other card", async () => {
+			const board = await admin().board.create({ title: "0.4" });
+			const withColumn = await admin().board.addBucket({
+				boardId: board.id,
+				title: "doing",
+				wipLimit: 1,
+			});
+
+			const doing = bucketId(withColumn, "doing");
+			const filled = await admin().board.addTask({
+				boardId: board.id,
+				title: "one",
+				bucketId: doing,
+			});
+
+			await expect(
+				admin().board.duplicateTask({ id: taskId(filled, "one") }),
+			).rejects.toMatchObject({ code: "CONFLICT" });
+		});
+
+		it("pulls a card off one board onto a column of another", async () => {
+			const template = await admin().board.create({ title: "Release checklist" });
+			const withTask = await admin().board.addTask({
+				boardId: template.id,
+				title: "Write the changelog",
+			});
+
+			const working = await admin().board.create({ title: "0.4" });
+
+			const landed = await admin().board.duplicateTask({
+				id: taskId(withTask, "Write the changelog"),
+				bucketId: bucketId(working, "To do"),
+				title: "Write the changelog",
+			});
+
+			// The answer is the board the copy landed on, not the one it came from.
+			expect(landed.id).toBe(working.id);
+			expect(cardsIn(landed, "To do")).toEqual(["Write the changelog"]);
+
+			const source = await admin().board.byId({ id: template.id });
+			expect(cardsIn(source, "To do")).toEqual(["Write the changelog"]);
+		});
+
+		it("survives the same card being copied into the same seam over and over", async () => {
+			const board = await admin().board.create({ title: "0.4" });
+			const withTasks = await admin().board.addTask({ boardId: board.id, title: "first" });
+			const id = taskId(withTasks, "first");
+
+			// Every copy lands in the gap under the original and halves it. Enough of them
+			// and a naive implementation runs out of precision; this one rebalances, on
+			// the same path a drag uses.
+			for (let attempt = 0; attempt < 60; attempt++) {
+				await admin().board.duplicateTask({ id });
+			}
+
+			const column = (await admin().board.byId({ id: board.id })).buckets[0];
+			const positions = (column?.tasks ?? []).map((task) => task.position);
+
+			expect(positions).toHaveLength(61);
+			expect(new Set(positions).size).toBe(positions.length);
+			expect(column?.tasks[0]?.title).toBe("first");
+		});
+
+		it("is the maintainer's to make", async () => {
+			const board = await admin().board.create({ title: "0.4", isPublic: true });
+			const withTask = await admin().board.addTask({ boardId: board.id, title: "A job" });
+
+			await expect(
+				callerAs(db, actorFor(member)).board.duplicateTask({
+					id: taskId(withTask, "A job"),
+				}),
+			).rejects.toMatchObject({ code: "FORBIDDEN" });
+		});
+	});
+
+	describe("copying a column", () => {
+		it("sits the copy next to the original, cards and all", async () => {
+			const board = await admin().board.create({ title: "0.4" });
+			const withColumn = await admin().board.addBucket({
+				boardId: board.id,
+				title: "checks",
+				wipLimit: 5,
+			});
+
+			const checks = bucketId(withColumn, "checks");
+
+			for (const title of ["lint", "typecheck"]) {
+				await admin().board.addTask({ boardId: board.id, title, bucketId: checks });
+			}
+
+			await admin().board.addBucket({ boardId: board.id, title: "after" });
+
+			const copied = await admin().board.duplicateBucket({ id: checks });
+
+			expect(columnTitles(copied)).toEqual(["To do", "checks", "checks (copy)", "after"]);
+			expect(cardsIn(copied, "checks (copy)")).toEqual(["lint", "typecheck"]);
+
+			const copy = copied.buckets.find((column) => column.title === "checks (copy)");
+
+			expect(copy?.wipLimit).toBe(5);
+			// Neither marker comes along: there is one of each per board, and the
+			// original still holds them.
+			expect(copy?.isDefault).toBe(false);
+			expect(copy?.isDone).toBe(false);
+		});
+
+		it("copies just the shape when the cards are not wanted", async () => {
+			const board = await admin().board.create({ title: "0.4" });
+			await admin().board.addTask({ boardId: board.id, title: "A job" });
+
+			const copied = await admin().board.duplicateBucket({
+				id: bucketId(board, "To do"),
+				title: "Next time",
+				includeTasks: false,
+			});
+
+			expect(cardsIn(copied, "Next time")).toEqual([]);
+			expect(cardsIn(copied, "To do")).toEqual(["A job"]);
+		});
+
+		it("copies a column onto another board, at the end", async () => {
+			const template = await admin().board.create({ title: "Release checklist" });
+			const withColumn = await admin().board.addBucket({
+				boardId: template.id,
+				title: "before tagging",
+			});
+
+			await admin().board.addTask({
+				boardId: template.id,
+				title: "bump the version",
+				bucketId: bucketId(withColumn, "before tagging"),
+			});
+
+			const working = await admin().board.create({ title: "0.4" });
+
+			const landed = await admin().board.duplicateBucket({
+				id: bucketId(withColumn, "before tagging"),
+				boardId: working.id,
+				title: "before tagging",
+			});
+
+			expect(landed.id).toBe(working.id);
+			expect(columnTitles(landed)).toEqual(["To do", "before tagging"]);
+			expect(cardsIn(landed, "before tagging")).toEqual(["bump the version"]);
+		});
+
+		it("does not let a copied column stand in for the done one", async () => {
+			const board = await admin().board.create({ title: "0.4" });
+			const withColumn = await admin().board.addBucket({
+				boardId: board.id,
+				title: "shipped",
+			});
+			const shipped = bucketId(withColumn, "shipped");
+
+			await admin().board.updateBucket({ id: shipped, isDone: true });
+
+			const copied = await admin().board.duplicateBucket({ id: shipped });
+
+			// One done column, still - the copy is a column, not a second finish line.
+			expect(copied.buckets.filter((column) => column.isDone).map((c) => c.title)).toEqual([
+				"shipped",
+			]);
+		});
+	});
+
+	describe("copying a board", () => {
+		it("brings the columns, the cards and the markers", async () => {
+			const board = await admin().board.create({ title: "0.4", isPublic: true });
+			const withColumn = await admin().board.addBucket({
+				boardId: board.id,
+				title: "shipped",
+			});
+
+			await admin().board.updateBucket({
+				id: bucketId(withColumn, "shipped"),
+				isDone: true,
+			});
+			await admin().board.addTask({ boardId: board.id, title: "A job" });
+
+			const copy = await admin().board.duplicate({ id: board.id });
+
+			expect(copy.title).toBe("0.4 (copy)");
+			expect(columnTitles(copy)).toEqual(["To do", "shipped"]);
+			expect(cardsIn(copy, "To do")).toEqual(["A job"]);
+			// The markers are one per board, and this is a new board, so the copy holds
+			// its own without the original giving anything up.
+			expect(copy.buckets.find((column) => column.isDone)?.title).toBe("shipped");
+			expect(copy.buckets.find((column) => column.isDefault)?.title).toBe("To do");
+			// Publishing is a decision about a particular board. A copy is not that board.
+			expect(copy.isPublic).toBe(false);
+		});
+
+		it("leaves the board it copied exactly as it was", async () => {
+			const board = await admin().board.create({ title: "0.4" });
+			await admin().board.addTask({ boardId: board.id, title: "A job" });
+
+			await admin().board.duplicate({ id: board.id });
+
+			const original = await admin().board.byId({ id: board.id });
+
+			expect(columnTitles(original)).toEqual(["To do"]);
+			expect(cardsIn(original, "To do")).toEqual(["A job"]);
+		});
+	});
+
+	describe("templates, which are boards kept to be copied", () => {
+		it("keeps a shape aside without touching the board it came from", async () => {
+			const board = await admin().board.create({ title: "Release checklist" });
+			await admin().board.addTask({ boardId: board.id, title: "Write the changelog" });
+
+			const template = await admin().board.saveAsTemplate({ id: board.id });
+
+			expect(template.isTemplate).toBe(true);
+			// Templates are listed apart from boards, so the name can be the same one.
+			expect(template.title).toBe("Release checklist");
+			expect(cardsIn(template, "To do")).toEqual(["Write the changelog"]);
+
+			const original = await admin().board.byId({ id: board.id });
+			expect(original.isTemplate).toBe(false);
+		});
+
+		it("starts a board from one, and stays a template", async () => {
+			const board = await admin().board.create({ title: "Release checklist" });
+			await admin().board.addTask({ boardId: board.id, title: "Write the changelog" });
+
+			const template = await admin().board.saveAsTemplate({ id: board.id });
+
+			const started = await admin().board.useTemplate({
+				id: template.id,
+				title: "0.5 merge window",
+			});
+
+			expect(started.isTemplate).toBe(false);
+			expect(started.title).toBe("0.5 merge window");
+			expect(cardsIn(started, "To do")).toEqual(["Write the changelog"]);
+
+			const stillATemplate = await admin().board.byId({ id: template.id });
+			expect(stillATemplate.isTemplate).toBe(true);
+		});
+
+		it("duplicating a template gives another template", async () => {
+			const board = await admin().board.create({ title: "Checklist", isTemplate: true });
+
+			const copy = await admin().board.duplicate({ id: board.id });
+
+			expect(copy.isTemplate).toBe(true);
+		});
+
+		it("says so when asked to start from something that is not a template", async () => {
+			const board = await admin().board.create({ title: "0.4" });
+
+			await expect(admin().board.useTemplate({ id: board.id })).rejects.toMatchObject({
+				code: "BAD_REQUEST",
+			});
+		});
+
+		it("can be demoted back to a board you work on", async () => {
+			const board = await admin().board.create({ title: "Checklist", isTemplate: true });
+
+			const promoted = await admin().board.update({ id: board.id, isTemplate: false });
+
+			expect(promoted.isTemplate).toBe(false);
+		});
+	});
+
 	it("links a card to the request it came from", async () => {
 		const visitor = callerAs(db, null);
 		const item = await visitor.feedback.submit({ kind: "idea", title: "RSS", body: "x" });

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 import { useAuth } from "../composables/useAuth";
 import { trpc } from "../lib/trpc";
 
@@ -14,6 +14,7 @@ const boards = ref<BoardSummary[]>([]);
 const board = ref<BoardContents | null>(null);
 const view = ref<"kanban" | "list">("kanban");
 const error = ref<string | null>(null);
+const notice = ref<string | null>(null);
 const busy = ref(false);
 
 const newBoardTitle = ref("");
@@ -22,6 +23,40 @@ const newCardTitle = ref<Record<string, string>>({});
 
 /** The card currently under the pointer, for the drag. Null when nothing is moving. */
 const dragging = ref<string | null>(null);
+
+/**
+ * The template currently being named into a board, and the name being typed.
+ *
+ * Naming happens in the page, in the same field as every other name in this app. A
+ * `window.prompt` would have been fewer lines and would have dropped an operating system
+ * dialog - white, square, another typeface - on top of an interface that has gone to some
+ * trouble to look like one thing.
+ */
+const startingFrom = ref<string | null>(null);
+const startTitle = ref("");
+const nameField = ref<HTMLInputElement | null>(null);
+
+/**
+ * The buttons that open the naming field, so the keyboard can be handed back to the one
+ * it came from when the field closes.
+ *
+ * Keyed rather than held as an element: opening the field unmounts the shelf's own
+ * "start a board" button, so a reference taken at click time is a node that is no longer
+ * on the page by the time it would be focused. The key survives the swap; the node does
+ * not. Templates key by id; the button on the open board keys by "head", because both can
+ * be on screen at once for the same template.
+ */
+const triggers = new Map<string, HTMLElement>();
+const returnFocusTo = ref<string | null>(null);
+
+const captureTrigger = (key: string, el: unknown) => {
+	if (el) triggers.set(key, el as HTMLElement);
+	else triggers.delete(key);
+};
+
+const captureNameField = (el: unknown) => {
+	if (el) nameField.value = el as HTMLInputElement;
+};
 
 const isMaintainer = computed(() => user.value?.role === "admin");
 
@@ -38,9 +73,17 @@ const flatCards = computed(() =>
 
 const doneColumn = computed(() => board.value?.buckets.find((column) => column.isDone) ?? null);
 
+/**
+ * A template is a board kept to be copied rather than worked on, so it is listed apart
+ * from the boards - same object, same controls, different shelf.
+ */
+const workingBoards = computed(() => boards.value.filter((summary) => !summary.isTemplate));
+const templates = computed(() => boards.value.filter((summary) => summary.isTemplate));
+
 async function run(action: () => Promise<void>) {
 	busy.value = true;
 	error.value = null;
+	notice.value = null;
 
 	try {
 		await action();
@@ -55,7 +98,9 @@ const loadBoards = () =>
 	run(async () => {
 		boards.value = await trpc.board.list.query();
 
-		const first = boards.value[0];
+		// A template is not what anyone came here to look at, so it is only ever opened
+		// on purpose - the board that opens itself is a board with work on it.
+		const first = workingBoards.value[0] ?? boards.value[0];
 
 		if (first && !board.value) {
 			board.value = await trpc.board.byId.query({ id: first.id });
@@ -72,6 +117,82 @@ const createBoard = () =>
 		board.value = await trpc.board.create.mutate({ title: newBoardTitle.value });
 		newBoardTitle.value = "";
 		boards.value = await trpc.board.list.query();
+	});
+
+/**
+ * The copies. Each one answers with the board the copy is on, so the view follows the
+ * thing that was just made rather than leaving it somewhere offscreen.
+ */
+const duplicateBoard = () =>
+	run(async () => {
+		if (!board.value) return;
+
+		board.value = await trpc.board.duplicate.mutate({ id: board.value.id });
+		boards.value = await trpc.board.list.query();
+	});
+
+/** The live board is left exactly as it was; only the template is new. */
+const saveAsTemplate = () =>
+	run(async () => {
+		if (!board.value) return;
+
+		const saved = await trpc.board.saveAsTemplate.mutate({ id: board.value.id });
+
+		boards.value = await trpc.board.list.query();
+		notice.value = `Kept "${saved.title}" as a template.`;
+	});
+
+/**
+ * Open the naming field for a template, wherever the ask came from.
+ *
+ * There is one of these on the page at a time and it lives on the template's own row, so
+ * the button on the open template scrolls no new control into being - it puts the cursor
+ * in the one that was already the answer.
+ */
+const beginFromTemplate = async (template: { id: string }, from: string) => {
+	startingFrom.value = template.id;
+	returnFocusTo.value = from;
+	startTitle.value = "";
+
+	await nextTick();
+	nameField.value?.focus();
+};
+
+/** Closing the field puts the keyboard back where it was, rather than at the top. */
+const cancelStart = async () => {
+	const key = returnFocusTo.value;
+
+	startingFrom.value = null;
+	startTitle.value = "";
+	returnFocusTo.value = null;
+
+	await nextTick();
+
+	if (key) triggers.get(key)?.focus();
+};
+
+/** An empty name is not an error: the board keeps the template's own title. */
+const startFromTemplate = (template: { id: string }) =>
+	run(async () => {
+		const title = startTitle.value.trim();
+
+		board.value = await trpc.board.useTemplate.mutate({
+			id: template.id,
+			...(title ? { title } : {}),
+		});
+
+		await cancelStart();
+		boards.value = await trpc.board.list.query();
+	});
+
+const duplicateColumn = (column: Column) =>
+	run(async () => {
+		board.value = await trpc.board.duplicateBucket.mutate({ id: column.id });
+	});
+
+const duplicateCard = (card: Card) =>
+	run(async () => {
+		board.value = await trpc.board.duplicateTask.mutate({ id: card.id });
 	});
 
 const addColumn = () =>
@@ -202,11 +323,11 @@ onMounted(loadBoards);
 </script>
 
 <template>
-	<section class="boards">
+	<section class="boards" :class="{ 'is-template': board?.isTemplate }">
 		<div class="bar">
 			<div class="picker">
 				<button
-					v-for="summary in boards"
+					v-for="summary in workingBoards"
 					:key="summary.id"
 					type="button"
 					:class="{ here: summary.id === board?.id }"
@@ -227,12 +348,98 @@ onMounted(loadBoards);
 			</div>
 		</div>
 
-		<form v-if="isMaintainer" class="new-board" @submit.prevent="createBoard">
-			<input v-model="newBoardTitle" placeholder="New board" required maxlength="120" />
-			<button type="submit" :disabled="busy">Add board</button>
-		</form>
+		<!--
+			Templates on their own shelf. They are ordinary boards - clicking one opens it
+			and every control still works - so the only thing this row adds is the one
+			verb that is about them: start a board from this shape.
+
+			That verb is the maintainer's, and so is the shelf. A visitor reading "Templates"
+			over a row of names they can do nothing with has been handed the maintainer's
+			filing cabinet instead of the board they came for.
+		-->
+		<div v-if="isMaintainer && templates.length" class="shelf">
+			<span class="shelf-label">Templates</span>
+
+			<span v-for="summary in templates" :key="summary.id" class="template">
+				<button
+					type="button"
+					class="name"
+					:class="{ here: summary.id === board?.id }"
+					@click="open(summary)"
+				>
+					{{ summary.title }}
+				</button>
+
+				<!-- The name is asked for here, on the row of the template it is for. -->
+				<form
+					v-if="startingFrom === summary.id"
+					class="naming"
+					@submit.prevent="startFromTemplate(summary)"
+				>
+					<input
+						:ref="captureNameField"
+						v-model="startTitle"
+						:placeholder="summary.title"
+						:aria-label="`Name for the board started from ${summary.title}`"
+						maxlength="120"
+						@keydown.esc="cancelStart"
+					/>
+					<button type="submit" class="quiet" :disabled="busy">start</button>
+					<button type="button" class="quiet" @click="cancelStart">cancel</button>
+				</form>
+
+				<button
+					v-else
+					:ref="(el) => captureTrigger(summary.id, el)"
+					type="button"
+					class="quiet"
+					:disabled="busy"
+					@click="beginFromTemplate(summary, summary.id)"
+				>
+					start a board
+				</button>
+			</span>
+		</div>
+
+		<!--
+			Every way a board comes into being, on one line: from nothing, from the open
+			one, or kept aside to come from again. They were three separate rows stacked
+			down the page before, which read as three unrelated afterthoughts.
+		-->
+		<div v-if="isMaintainer" class="maintainer-row">
+			<form class="new-board" @submit.prevent="createBoard">
+				<input v-model="newBoardTitle" placeholder="New board" required maxlength="120" />
+				<!-- The one thing this row is for gets the surface, the way every other
+				     form in the app does; the board-scoped verbs beside it do not. -->
+				<button type="submit" class="primary" :disabled="busy">Add board</button>
+			</form>
+
+			<div v-if="board" class="board-actions">
+				<button type="button" :disabled="busy" @click="duplicateBoard">
+					{{ board.isTemplate ? "Copy template" : "Copy board" }}
+				</button>
+				<button
+					v-if="!board.isTemplate"
+					type="button"
+					:disabled="busy"
+					@click="saveAsTemplate"
+				>
+					Save as template
+				</button>
+				<button
+					v-else
+					:ref="(el) => captureTrigger('head', el)"
+					type="button"
+					:disabled="busy"
+					@click="beginFromTemplate(board, 'head')"
+				>
+					Start a board from this
+				</button>
+			</div>
+		</div>
 
 		<p v-if="error" class="error" role="alert">{{ error }}</p>
+		<p v-if="notice" class="notice" role="status">{{ notice }}</p>
 
 		<p v-if="!boards.length && !busy" class="empty">
 			No boards yet.
@@ -241,6 +448,13 @@ onMounted(loadBoards);
 
 		<template v-if="board">
 			<p v-if="board.description" class="description">{{ board.description }}</p>
+
+			<!-- The hollow columns below already say this is a template; the one thing
+			     the shape cannot say is which way the editing runs. -->
+			<p v-if="board.isTemplate" class="hint">
+				Editing a template changes what new boards start with, never a board that
+				has already started from it.
+			</p>
 
 			<!-- Kanban: as many columns as the board has, in the order it puts them.
 			     Nothing here assumes three, and nothing assumes one of them is "done". -->
@@ -272,6 +486,16 @@ onMounted(loadBoards);
 								@click="toggleDoneColumn(column)"
 							>
 								{{ column.isDone ? "✓ done column" : "mark done" }}
+							</button>
+							<button
+								type="button"
+								class="quiet"
+								:disabled="busy"
+								:aria-label="`Copy the column ${column.title} and its cards`"
+								title="Copy this column and its cards"
+								@click="duplicateColumn(column)"
+							>
+								copy
 							</button>
 							<button type="button" class="quiet" @click="removeColumn(column)">
 								remove
@@ -320,6 +544,16 @@ onMounted(loadBoards);
 								>
 									→
 								</button>
+								<button
+									type="button"
+									class="quiet"
+									:disabled="busy"
+									:aria-label="`Copy the card ${card.title}`"
+									title="Copy this card, under this one"
+									@click="duplicateCard(card)"
+								>
+									copy
+								</button>
 								<button type="button" class="quiet" @click="removeCard(card)">
 									delete
 								</button>
@@ -360,17 +594,35 @@ onMounted(loadBoards);
 						<span>{{ task.title }}</span>
 					</label>
 
-					<select
-						v-if="isMaintainer"
-						:value="column.id"
-						:disabled="busy"
-						aria-label="Column"
-						@change="moveToColumn(task, ($event.target as HTMLSelectElement).value)"
-					>
-						<option v-for="option in board.buckets" :key="option.id" :value="option.id">
-							{{ option.title }}
-						</option>
-					</select>
+					<!-- One group, so the controls stay together at the end of the row
+					     instead of the select being stranded in the middle of it. -->
+					<div v-if="isMaintainer" class="row-actions">
+						<select
+							:value="column.id"
+							:disabled="busy"
+							aria-label="Column"
+							@change="moveToColumn(task, ($event.target as HTMLSelectElement).value)"
+						>
+							<option
+								v-for="option in board.buckets"
+								:key="option.id"
+								:value="option.id"
+							>
+								{{ option.title }}
+							</option>
+						</select>
+
+						<button
+							type="button"
+							class="quiet"
+							:disabled="busy"
+							:aria-label="`Copy the card ${task.title}`"
+							title="Copy this card, under this one"
+							@click="duplicateCard(task)"
+						>
+							copy
+						</button>
+					</div>
 
 					<span v-else class="column-name">{{ column.title }}</span>
 				</li>
@@ -438,6 +690,85 @@ onMounted(loadBoards);
 	font-weight: 400;
 }
 
+/*
+ * The shelf the templates sit on: the same display face as the picker, one step down in
+ * size and one step back in ink. The word "Templates" is the row's own name and is set in
+ * the working face at body size - it is not an eyebrow, so it wears no costume: no caps,
+ * no tracking, no rule beside it.
+ */
+.shelf {
+	display: flex;
+	align-items: baseline;
+	/* One template holds together because the space around it is wider than the space
+	   inside it. Without that difference the row reads as one long string of words. */
+	gap: 0.75rem 2.25rem;
+	flex-wrap: wrap;
+}
+
+.shelf-label {
+	color: var(--muted);
+	font-size: 0.85rem;
+}
+
+.template {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 0.55rem;
+	flex-wrap: wrap;
+}
+
+.template .name {
+	padding: 0.15rem 0;
+	border: none;
+	border-radius: 0;
+	background: none;
+	color: var(--muted);
+	font-family: var(--font-display);
+	font-variation-settings: "SOFT" 30, "WONK" 1;
+	font-size: 0.95rem;
+}
+
+.template .name:hover:not(:disabled) {
+	color: var(--fg);
+}
+
+.template .name.here {
+	color: var(--fg-strong);
+	font-weight: 600;
+}
+
+/* The naming field sits on the template's own row, sized to a board title and no wider. */
+.naming {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+
+.naming input {
+	width: 12rem;
+	max-width: 100%;
+	padding: 0.3rem 0.45rem;
+	font-size: 0.85rem;
+}
+
+/*
+ * Making a board, copying the open one, and keeping it as a template are the same kind of
+ * act at the same scale, so they share a line and a button treatment. The column gap is
+ * what separates the two groups; there is no rule drawn between them.
+ */
+.maintainer-row {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem 1.5rem;
+	flex-wrap: wrap;
+}
+
+.board-actions {
+	display: flex;
+	gap: 0.5rem;
+	flex-wrap: wrap;
+}
+
 .new-board,
 .new-column {
 	display: flex;
@@ -463,6 +794,24 @@ onMounted(loadBoards);
 	gap: 0.6rem;
 	padding: 0.85rem;
 	align-content: start;
+}
+
+/*
+ * A template is the shape of a board, not a board with work on it - so it is drawn as the
+ * shape. The columns keep their gnawed outline and stand on the page's own wood with no
+ * timber filled in behind them. Nothing is added to announce the state: a surface is taken
+ * away, which is the same tonal move the rest of the app uses for depth, run backwards.
+ */
+.is-template .column,
+.is-template .list li,
+.is-template .card {
+	background: transparent;
+}
+
+/* A card in a template is the same idea one size down, so it needs the edge the fill
+   was standing in for. */
+.is-template .card {
+	border-color: var(--border);
 }
 
 /* The column that means "finished", when a board has decided it has one. */
@@ -576,6 +925,19 @@ onMounted(loadBoards);
 	justify-content: space-between;
 	gap: 0.75rem;
 	padding: 0.7rem 0.9rem;
+}
+
+/* The row's controls travel together at its end; the title takes whatever is left. */
+.list li > label {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.row-actions {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	flex: 0 0 auto;
 }
 
 .column-name {

@@ -41,9 +41,6 @@ It is a less enterprise solution and a more communal town hall system with a rel
 - Announcements
 - Configurations for scheduled releases and more
 - Basic word filter that is configurable
-- Better features for duplication and templates
-- Multiboard?
-
 ### Original Use Case:
 A few friends of mine were working on a project that needed some project tracking and the single todo list in the repo was not cutting it anymore. So we started turning to various solutions but they each had their own complicated solution. One thing that we liked was vikunja, however, some things were too complicated for us feature wise and there were some things that seemed to be premium only, which no disrespect was all within their right to do so and was not actually too bad, but just wasn't for us since we only needed a simple solution that we can self host.
 

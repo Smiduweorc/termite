@@ -58,6 +58,30 @@ Boards are private until published. A published board is readable by anyone and 
 
 If you want one, mark a column as done and the two stay in step in both directions - ticking a card sends it there, dragging it out un-ticks it. Unmark it and the board goes back to having no finish line. At most one done column and one default column per board, enforced by partial unique indexes rather than by convention. Columns can carry a WIP limit; deleting a column moves its cards to the default one rather than deleting work.
 
+### Copying, and templates
+
+The same work arrives again and again - the same three chores before every tag, the same column of checks - and typing it out each time is how it stops being tracked at all. So anything on a board can be copied, at four sizes:
+
+| what | where the copy goes | what comes with it |
+| --- | --- | --- |
+| a card | directly under the one it came from | description, and the request and release it is linked to |
+| a column | immediately to the right of the original | its WIP limit, and its cards unless you say `includeTasks: false` |
+| a board | a new board of its own | every column and card |
+| a template | a new board of its own | every column and card |
+
+A card or a column can also be copied onto **another** board by naming a column (`duplicateTask`) or a board (`duplicateBucket`) to land on, which is how a card is pulled off a template and onto the board you are working on.
+
+Copies are named `"... (copy)"` unless you pass a title. A copied card counts against the target column's WIP limit like any other card; a copied *column* does not, because its cards already fit where they came from. A copied card keeps whether it was ticked off, except that landing in a column marked as done ticks it, the same way dragging it there would.
+
+**A template is a board with `isTemplate` set.** Not a second kind of object with its own table and its own half of every procedure - a board that is kept to be copied rather than worked on. It is edited with the same controls, it is listed on its own shelf rather than among the boards, and starting from one is the same copy that duplicates a board:
+
+- `board.saveAsTemplate` copies the board you are on and files the copy as a template. The live board is untouched, so this is safe in the middle of a release.
+- `board.useTemplate` starts a new board from one. The template stays a template.
+- `board.duplicate` on a template gives another template; on a board, another board.
+- `board.update({ isTemplate })` promotes a board or demotes a template, if you decide the shelf was wrong.
+
+Nothing is published by being copied, whatever the original was. Publishing is a decision about a particular board, and a copy is a different board.
+
 ### How the ordering works
 
 Cards are ordered by a floating-point `position`, not by 0,1,2,3. Dropping a card between two neighbours gives it the midpoint of their positions, so a drag writes **one row** - with integer ranks it would renumber everything below the drop, and two people dragging at once would interleave into an order neither asked for. This is fractional indexing, the same idea as Jira's LexoRank and Figma's fractional indices, done with the numeric type Postgres already sorts.
@@ -75,7 +99,7 @@ bun run admin:create you@example.com "Your Name"   # prints your one-time set-pa
 bun run dev                             # api on :3000, board on :5173
 ```
 
-`bun run db:seed` is optional and for development: it leaves a board with a shipped release behind it, an open merge window, a task board whose columns are not the usual three, and two accounts - `maintainer@example.com` (admin) and `contributor@example.com`, both `password123`. Seeded accounts are the one place a password is set directly; every other account gets one through a link.
+`bun run db:seed` is optional and for development: it leaves a board with a shipped release behind it, an open merge window, a task board whose columns are not the usual three, a release-checklist template to start boards from, and two accounts - `maintainer@example.com` (admin) and `contributor@example.com`, both `password123`. Seeded accounts are the one place a password is set directly; every other account gets one through a link.
 
 ```sh
 bun run test        # backend runs against PGlite - no database needed

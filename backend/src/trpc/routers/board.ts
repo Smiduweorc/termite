@@ -7,22 +7,32 @@ import {
 	createBucket,
 	createTask,
 	DeleteBucketInput,
+	DuplicateBoardInput,
+	DuplicateBucketInput,
+	DuplicateTaskInput,
 	deleteBoard,
 	deleteBucket,
 	deleteTask,
+	duplicateBoard,
+	duplicateBucket,
+	duplicateTask,
 	getBoard,
 	listBoards,
 	MoveBucketInput,
 	MoveTaskInput,
 	moveBucket,
 	moveTask,
+	SaveAsTemplateInput,
+	saveAsTemplate,
 	TaskIdInput,
 	UpdateBoardInput,
 	UpdateBucketInput,
 	UpdateTaskInput,
+	UseTemplateInput,
 	updateBoard,
 	updateBucket,
 	updateTask,
+	useTemplate,
 } from "../../services/board.service";
 import { adminProcedure, publicProcedure, router } from "../trpc";
 
@@ -59,6 +69,25 @@ export const boardRouter = router({
 		.input(BoardIdInput)
 		.mutation(({ ctx, input }) => deleteBoard(ctx.db, ctx.actor, input)),
 
+	/**
+	 * Copying, at four sizes: a card, a column, a board, and a board kept aside to start
+	 * others from. A template is only a board with `isTemplate` set - `list` returns both
+	 * and the client shows them apart - so all four of these are the same copy underneath.
+	 */
+	duplicate: adminProcedure
+		.input(DuplicateBoardInput)
+		.mutation(({ ctx, input }) => duplicateBoard(ctx.db, ctx.actor, input)),
+
+	/** trpc.board.saveAsTemplate.mutate({ id }) - the live board is left alone. */
+	saveAsTemplate: adminProcedure
+		.input(SaveAsTemplateInput)
+		.mutation(({ ctx, input }) => saveAsTemplate(ctx.db, ctx.actor, input)),
+
+	/** trpc.board.useTemplate.mutate({ id, title }) - a new board with that shape. */
+	useTemplate: adminProcedure
+		.input(UseTemplateInput)
+		.mutation(({ ctx, input }) => useTemplate(ctx.db, ctx.actor, input)),
+
 	/** Columns: any number, named anything, none of them mandatory. */
 	addBucket: adminProcedure
 		.input(CreateBucketInput)
@@ -72,6 +101,11 @@ export const boardRouter = router({
 	moveBucket: adminProcedure
 		.input(MoveBucketInput)
 		.mutation(({ ctx, input }) => moveBucket(ctx.db, ctx.actor, input)),
+
+	/** The copy sits next to the original, with its cards unless you say otherwise. */
+	duplicateBucket: adminProcedure
+		.input(DuplicateBucketInput)
+		.mutation(({ ctx, input }) => duplicateBucket(ctx.db, ctx.actor, input)),
 
 	/** Deleting a column moves its cards; it never throws work away. */
 	deleteBucket: adminProcedure
@@ -90,6 +124,11 @@ export const boardRouter = router({
 	moveTask: adminProcedure
 		.input(MoveTaskInput)
 		.mutation(({ ctx, input }) => moveTask(ctx.db, ctx.actor, input)),
+
+	/** The copy lands under the original, or in the column named - on any board. */
+	duplicateTask: adminProcedure
+		.input(DuplicateTaskInput)
+		.mutation(({ ctx, input }) => duplicateTask(ctx.db, ctx.actor, input)),
 
 	deleteTask: adminProcedure
 		.input(TaskIdInput)
