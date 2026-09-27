@@ -1,7 +1,7 @@
 # The frontend is a static bundle, so this stage is pure scaffolding: it produces
 # frontend/dist, and nothing else from it - not bun, not node_modules - survives into the
 # image that ships.
-FROM oven/bun:1.3-alpine AS build
+FROM oven/bun:1.4-alpine AS build
 WORKDIR /app
 
 COPY package.json bun.lock ./
