@@ -33,7 +33,7 @@ COPY frontend ./frontend
 # the two-image split is for.
 RUN bun run --cwd frontend build:dist
 
-FROM nginx:1.29-alpine AS runtime
+FROM nginx:1.31-alpine AS runtime
 
 COPY --from=build /app/frontend/dist /usr/share/nginx/html
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
