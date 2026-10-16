@@ -1,5 +1,6 @@
 import { stringifySetCookie } from "cookie";
 import { buildTokenCookie, clearTokenCookie } from "lacewing";
+import { parseDuration } from "lacewing/extension";
 import { env } from "../config/env";
 import { VOTER_COOKIE, VOTER_COOKIE_MAX_AGE_SECONDS } from "./voter";
 
@@ -19,6 +20,13 @@ export const CSRF_COOKIE = "csrf_token";
  * work unchanged in dev.
  */
 const SAME_SITE = env.COOKIE_SAME_SITE === "strict" ? "Strict" : "Lax";
+
+/**
+ * The access cookie lives exactly as long as the token inside it. Parsed with
+ * lacewing's own duration parser, so "15m" means here what it means to the
+ * signer - a cookie that outlives its token only ever carries a dead one.
+ */
+const ACCESS_COOKIE_MAX_AGE_SECONDS = parseDuration(env.JWT_ACCESS_EXPIRY);
 
 /**
  * The CSRF cookie is the one cookie that must NOT be httpOnly - its whole job is to be
@@ -58,7 +66,7 @@ export function sessionCookies(
 		buildTokenCookie(accessToken, {
 			name: ACCESS_COOKIE,
 			sameSite: SAME_SITE,
-			maxAgeSeconds: 15 * 60,
+			maxAgeSeconds: ACCESS_COOKIE_MAX_AGE_SECONDS,
 		}),
 		buildTokenCookie(refreshToken, {
 			name: REFRESH_COOKIE,

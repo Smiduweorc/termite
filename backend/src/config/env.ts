@@ -10,11 +10,12 @@ const Env = type({
 	DATABASE_URL: "string > 0",
 	CORS_ORIGIN: "string > 0",
 
-	// 32 characters is only the first gate. lacewing entropy-checks the secret
+	// 43 characters is only the first gate - the shortest base64 that carries
+	// HS256's 256 bits (hex needs 64). lacewing entropy-checks the secret
 	// when it imports the key: a human-chosen passphrase - even a long one -
-	// throws EntropyCheckFailed and the app refuses to boot. Generate one with
+	// throws a JWTError (ENTROPY_CHECK_FAILED) and the app refuses to boot. Generate one with
 	//   openssl rand -base64 48
-	JWT_SECRET: "string >= 32",
+	JWT_SECRET: "string >= 43",
 	// Anything lacewing's duration parser accepts: "15m", "1h". Capped at 1h -
 	// access tokens above that refuse to sign, and that cap is the point.
 	JWT_ACCESS_EXPIRY: "string > 0",

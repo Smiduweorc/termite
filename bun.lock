@@ -28,7 +28,7 @@
         "dotenv": "^17.4.2",
         "drizzle-orm": "^0.45.3",
         "elysia": "^1.4.30",
-        "lacewing": "^1.2.0",
+        "lacewing": "^2.0.0",
         "nodemailer": "^9.1.1",
         "pg": "^8.23.1",
         "pino": "^10.4.0",
@@ -587,7 +587,7 @@
 
     "json-schema-traverse": ["json-schema-traverse@1.0.0", "", {}, "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug=="],
 
-    "lacewing": ["lacewing@1.2.0", "", { "dependencies": { "jose": "^6.2.10" } }, "sha512-E2B5wOYjkRt/qTpQi3lbxnmUurzDknNVcJptTbq3iWJow9rSF8fp/gzvrVtYFPvgojw1eBx7Yj4gViFxOu3UYQ=="],
+    "lacewing": ["lacewing@2.0.0", "", { "dependencies": { "jose": "^6.2.10" } }, "sha512-F9RsRPf1VFgLQhQKEK8yLegFKHvHmVY1C+TtgXHR6op6175GC0U10+uawvaEL56L7FkaHGuucqoRU7J4NY8J1g=="],
 
     "lefthook": ["lefthook@2.1.10", "", { "optionalDependencies": { "lefthook-darwin-arm64": "2.1.10", "lefthook-darwin-x64": "2.1.10", "lefthook-freebsd-arm64": "2.1.10", "lefthook-freebsd-x64": "2.1.10", "lefthook-linux-arm64": "2.1.10", "lefthook-linux-x64": "2.1.10", "lefthook-openbsd-arm64": "2.1.10", "lefthook-openbsd-x64": "2.1.10", "lefthook-windows-arm64": "2.1.10", "lefthook-windows-x64": "2.1.10" }, "bin": { "lefthook": "bin/index.js" } }, "sha512-K7mM4WoqMwqfXYK11EHy+lSH1uW8XHni3Yn/bSqyerPkUPygGdf3xn18JoV5HyA06xuQL3ofGAOjG01QX9oJ4w=="],
 
