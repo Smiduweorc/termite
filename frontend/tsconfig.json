@@ -12,5 +12,14 @@
 
 		"noEmit": true
 	},
+	// Vue SFCs are type-checked by the content mapper, which tsc loads as a plugin.
+	// Alpha: see the "Type checking .vue files" section of README.md.
+	"contentMappers": [
+		{
+			"package": "@vue/content-mapper",
+			"extensions": [".vue"],
+			"options": { "target": 3.5 }
+		}
+	],
 	"include": ["src/**/*.ts", "src/**/*.vue", "vite.config.ts", "vitest.config.ts"]
 }
