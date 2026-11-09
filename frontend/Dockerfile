@@ -20,12 +20,12 @@ RUN bun install --frozen-lockfile --ignore-scripts
 COPY frontend ./frontend
 
 # `build:dist` is `vite build` alone - deliberately not the `build` script, which prefixes
-# it with `vue-tsc --noEmit`.
+# it with `tsc --runExternalCode`.
 #
 # Type-checking here would be a second run of a gate that has already passed: release.yml
 # calls the CI workflow, which runs typecheck and build across both workspaces, before any
 # image is built. Repeating it inside the image buys nothing and costs the whole backend
-# source tree in the build context - src/lib/trpc.ts imports AppRouter, so vue-tsc needs
+# source tree in the build context - src/lib/trpc.ts imports AppRouter, so tsc needs
 # the server on disk even though @vue/tsconfig sets verbatimModuleSyntax and the type-only
 # import is erased before vite ever resolves it.
 #

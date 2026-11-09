@@ -1,4 +1,5 @@
 # Documentation
+
 ## The model
 
 There are four moving parts and that is the whole thing:
@@ -14,11 +15,11 @@ A release is `planned`, `merge_window` or `released`. Planned releases can have 
 
 ## Who can do what
 
-| who | read | post | vote | edit their own wording | triage, plan, ship |
-| --- | --- | --- | --- | --- | --- |
-| passer-by (no account) | yes | yes | yes | no | no |
-| signed-in | yes | yes | yes | yes | no |
-| maintainer (admin) | yes | yes | yes | yes | yes |
+| who                    | read | post | vote | edit their own wording | triage, plan, ship |
+| ---------------------- | ---- | ---- | ---- | ---------------------- | ------------------ |
+| passer-by (no account) | yes  | yes  | yes  | no                     | no                 |
+| signed-in              | yes  | yes  | yes  | yes                    | no                 |
+| maintainer (admin)     | yes  | yes  | yes  | yes                    | yes                |
 
 Accounts exist because someone has to be the maintainer. A visitor never needs one, and the sign-in form is behind a link, not in front of the board.
 
@@ -62,16 +63,16 @@ If you want one, mark a column as done and the two stay in step: ticking a card 
 
 The same work comes back every release (the same three chores before every tag, the same column of checks), so anything on a board can be copied:
 
-| what | where the copy goes | what comes with it |
-| --- | --- | --- |
-| a card | directly under the one it came from | description, and the request and release it is linked to |
-| a column | immediately to the right of the original | its WIP limit, and its cards unless you say `includeTasks: false` |
-| a board | a new board of its own | every column and card |
-| a template | a new board of its own | every column and card |
+| what       | where the copy goes                      | what comes with it                                                |
+| ---------- | ---------------------------------------- | ----------------------------------------------------------------- |
+| a card     | directly under the one it came from      | description, and the request and release it is linked to          |
+| a column   | immediately to the right of the original | its WIP limit, and its cards unless you say `includeTasks: false` |
+| a board    | a new board of its own                   | every column and card                                             |
+| a template | a new board of its own                   | every column and card                                             |
 
 A card or a column can also be copied onto another board by naming a column (`duplicateTask`) or a board (`duplicateBucket`) to land on, which is how a card is pulled off a template and onto the board you are working on.
 
-Copies are named `"... (copy)"` unless you pass a title. A copied card counts against the target column's WIP limit like any other card; a copied *column* does not, because its cards already fit where they came from. A copied card keeps whether it was ticked off, except that landing in a column marked as done ticks it, the same way dragging it there would.
+Copies are named `"... (copy)"` unless you pass a title. A copied card counts against the target column's WIP limit like any other card; a copied _column_ does not, because its cards already fit where they came from. A copied card keeps whether it was ticked off, except that landing in a column marked as done ticks it, the same way dragging it there would.
 
 A template is a board with `isTemplate` set, kept to be copied. It is edited with the same controls and listed on its own shelf instead of among the boards. Starting from one is the same copy that duplicates a board:
 
@@ -96,4 +97,3 @@ Two differences between the transports:
 
 - gRPC has no cookies, so an anonymous caller there can read and post but cannot vote. Voting anonymously is a browser thing.
 - Task boards are tRPC-only. They are a drag-and-drop surface for one person.
-
