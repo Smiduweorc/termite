@@ -8,16 +8,16 @@ Termite is a simple self-hostable, open source, feedback board of sorts and a re
 
 ## Problem
 
-If you maintain a small project (OSS, indie, side project or whatnot) and you have a small audience, you may or may not have ran into something similar:
+If you maintain a small project (OSS, indie, side project or whatnot) and you have a small audience, you may or may not have run into something similar:
 - Every tracker is built for corporate teams.
 	- AGILE is forced (random but agile is really mostly implemented as a variant of waterfall IRL)
 	- Corporate slop is forced
 	- AI is bolted
 - These systems are made usually for customers as well so they typically have a lot of restrictions as business requirements of who can report what
 	- Honestly fine, but maybe not a trait for some OSS communities
-	- Account creation reqiured, which can cause the loss of feedback
+	- Account creation required, which can cause the loss of feedback
 
-None of these matches how small projects actually work. Most small projects don't ship constantly and are sometimes just maintainence only once being feature complete. There may be an occasional feature but even so it usually happens in bursts.
+None of these matches how small projects actually work. Most small projects don't ship constantly and are sometimes just maintenance only once being feature complete. There may be an occasional feature but even so it usually happens in bursts.
 
 ## What termite IS
 Termite is a simple public board where anyone can drop an idea or a bug report. The community can upvote what matters to them and the maintainer decides what they want to add on their own schedule in their merge window.
@@ -25,15 +25,15 @@ Termite is a simple public board where anyone can drop an idea or a bug report. 
 It is a less enterprise solution and a more communal town hall system with a release calendar loosely taped to it.
 
 ## TERMITE IS NOT FOR YOU IF YOU
-- **need sprint boards (go away, far away)**
-- **story points (go away)**
-- **burndown charts (go away)**
-- **have sprints (go away)**
-- **want AI features (go further away)**
-- **want managing teams + assignees + permissions tiers or SLAs (NOPE)**
-- **a glorified social media in a corporate environement with profiles (NOPE)**
-- **batch-and-ship rhythm (termite is made for release cycles. if you do not have one, the model we have is just plainly not for you)**
-- **backlog that is long living (termite is also made for projects that may or may not reach feature completeness)**
+- need sprint boards (go away, far away)
+- story points (go away)
+- burndown charts (go away)
+- have sprints (go away)
+- want AI features (go further away)
+- want managing teams + assignees + permissions tiers or SLAs (NOPE)
+- a glorified social media in a corporate environment with profiles (NOPE)
+- batch-and-ship rhythm (termite is made for release cycles. if you do not have one, the model we have is just plainly not for you)
+- backlog that is long living (termite is also made for projects that may or may not reach feature completeness)
 
 ## Self-hosting
 
@@ -49,12 +49,14 @@ curl -O https://raw.githubusercontent.com/Smiduweorc/termite/master/docker-compo
 curl -o .env https://raw.githubusercontent.com/Smiduweorc/termite/master/.env.release.example
 
 # JWT_SECRET, POSTGRES_PASSWORD, and the two public URLs are required.
-openssl rand -base64 48   # -> JWT_SECRET
+openssl rand -base64 48   # use as JWT_SECRET
 $EDITOR .env
 
 docker compose -f docker-compose.release.yml up -d
-docker compose -f docker-compose.release.yml exec backend bun run admin:create
+docker compose -f docker-compose.release.yml exec backend bun run admin:create you@example.com "Your Name"
 ```
+
+`admin:create` prints a one-time link to set the first maintainer's password (see [Accounts](./docs/docs.md#accounts)).
 
 The `migrate` service applies the schema before the backend starts, so a fresh volume
 and an upgrade both work without a manual step.
@@ -62,9 +64,9 @@ and an upgrade both work without a manual step.
 ### The two URLs
 
 `PUBLIC_APP_URL` and `PUBLIC_API_URL` are the only settings that need real thought. Both
-are resolved by the **browser**, so neither can be a compose service name.
+are resolved by the browser, so neither can be a compose service name.
 
-They must also be the **same site**. Termite's session cookies are `SameSite=Lax` with no
+They must also be the same site. Termite's session cookies are `SameSite=Lax` with no
 `none` option, and always `Secure`:
 
 - `board.example.com` + `api.example.com`: fine.
@@ -78,29 +80,17 @@ Anything other than `http://localhost` has to be https, because the cookies are 
 
 Vite inlines `import.meta.env` at build time, so a prebuilt image cannot carry a useful
 `VITE_API_URL`. The frontend image instead rewrites a placeholder in `index.html` from
-`$API_URL` when the container starts. That means `API_URL` is read at **create** time, not
+`$API_URL` when the container starts. That means `API_URL` is read when the container is created, not
 on restart:
 
 ```sh
 docker compose -f docker-compose.release.yml up -d --force-recreate frontend
 ```
 
-### Cutting a release
+### Image tags
 
-Tags drive it. `.github/workflows/release.yml` runs the full CI suite, builds all four
-image/architecture combinations on native runners, merges them into multi-arch tags, and
-opens a GitHub release:
-
-```sh
-# package.json version and the tag must match - the workflow checks and fails if not.
-git commit -am "chore(release): version bump"
-git tag v1.1.0 && git push --follow-tags
-```
-
-Images publish as `1.1.0`, `1.1`, `1`, and `latest`. A prerelease tag (`v1.1.0-rc.1`)
+Each release publishes as `1.1.0`, `1.1`, `1` and `latest`. A prerelease (`1.1.0-rc.1`)
 publishes under its exact version only and never moves `latest`.
-
-Requires two repository secrets: `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
 
 ## Extra Lore
 
