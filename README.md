@@ -108,6 +108,11 @@ What this means in practice:
 
 **We will move to the proper stable release on 24 November 2026**, replacing these prerelease pins with the stable TypeScript and Vue Language Tools versions.
 
+## Security
+
+Security advisories are in [ADVISORIES.md](./ADVISORIES.md). To report a
+vulnerability, see [SECURITY.md](./SECURITY.md).
+
 ## Extra Lore
 
 ### Upcoming features:
